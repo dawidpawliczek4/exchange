@@ -8,17 +8,29 @@ kotlinxDatetime = "0.7.1"
 kotlinxSerializationJSON = "1.9.0"
 kotlinxCoroutines = "1.10.2"
 junit = "5.11.4"
+springBoot = "4.0.6"
+springDependencyManagement = "1.1.7"
 
 [libraries]
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+# Gradle plugin JARs consumed on buildSrc's classpath (so precompiled convention plugins can apply them by id).
+kotlinAllopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
+springBootGradlePlugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "springBoot" }
+springDependencyManagementPlugin = { module = "io.spring.gradle:dependency-management-plugin", version.ref = "springDependencyManagement" }
 kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJSON" }
 kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+# No version here on purpose: the Spring Boot BOM (via dependency-management) controls starter versions.
+springBootStarterWeb = { module = "org.springframework.boot:spring-boot-starter-web" }
+springBootStarterActuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 
 # Libraries can be bundled together for easier import
 [bundles]
 kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
+springBootEcosystem = ["springBootStarterWeb", "springBootStarterActuator"]
 
 [plugins]
 kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+springBoot = { id = "org.springframework.boot", version.ref = "springBoot" }
+springDependencyManagement = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }

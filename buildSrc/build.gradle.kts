@@ -12,4 +12,9 @@ kotlin {
 dependencies {
     // Add a dependency on the Kotlin Gradle plugin, so that convention plugins can apply it.
     implementation(libs.kotlinGradlePlugin)
+    // kotlin("plugin.spring") -> kotlin-allopen, opens Spring-managed classes for proxying.
+    implementation(libs.kotlinAllopen)
+    // These give the precompiled convention plugins their versions (no `version` allowed in plugins {} there).
+    implementation(libs.springBootGradlePlugin)
+    implementation(libs.springDependencyManagementPlugin)
 }

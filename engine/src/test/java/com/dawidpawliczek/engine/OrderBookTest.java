@@ -25,11 +25,55 @@ public class OrderBookTest {
 
 
         var expectedB1Trades = List.of(
-                new Trade(3, 1, 100, 4)
+                new Trade(1, 3, 100, 4)
         );
         var B1Trades = ob.submit(B1);
-//        assertEquals(expectedB1Trades, B1Trades);
-        ob.submit(B1);
+        assertEquals(expectedB1Trades, B1Trades);
+
+        var expectedb2Trades = List.of(
+                new Trade(1, 4, 100, 6),
+                new Trade(2, 4, 101, 3)
+        );
+        var b2Trades = ob.submit(B2);
+        assertEquals(expectedb2Trades, b2Trades);
+    }
+
+    @Test
+    void testCorrectQueueOrder() {
+        var ob = new OrderBook();
+
+        var S1 = new Order(1, Side.SELL, 100, false, 10);
+        var S2 = new Order(2, Side.SELL, 100, false, 10);
+        ob.submit(S1);
+        ob.submit(S2);
+
+        var b1 = new Order(3, Side.BUY, 100, false, 12);
+        var result = ob.submit(b1);
+
+        var expectedb2 = List.of(
+                new Trade(1, 3, 100, 10),
+                new Trade(2, 3, 100, 2)
+        );
+        assertEquals(expectedb2, result);
+    }
+
+    @Test
+    void testMarketOrder() {
+        var ob = new OrderBook();
+
+        var S1 = new Order(1, Side.SELL, 100, false, 10);
+        var S2 = new Order(2, Side.SELL, 100, false, 10);
+        ob.submit(S1);
+        ob.submit(S2);
+
+        var b1 = new Order(3, Side.BUY, 1, true, 12);
+        var result = ob.submit(b1);
+        var expectedb2 = List.of(
+                new Trade(1, 3, 100, 10),
+                new Trade(2, 3, 100, 2)
+        );
+
+        assertEquals(expectedb2, result);
     }
 
 }

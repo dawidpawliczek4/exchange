@@ -29,13 +29,21 @@ public final class OrderBook {
 
                 if (maker.quantity() == 0) bestQueue.getValue().pollFirst();
                 if (bestQueue.getValue().isEmpty()) asks.remove(restingPrice);
+            } else {
+                break;
             }
+        }
+
+        if (incoming.quantity() > 0) {
+            var ourSide = (incoming.side() == Side.BUY) ? bids : asks;
+            ourSide.computeIfAbsent(incoming.price(), _ -> new ArrayDeque<>()).add(incoming);
         }
 
         return trades;
     }
 
     private boolean isMatch(Order incoming, Order best) {
+        if (incoming.isMarket()) return true;
         if (incoming.side() == Side.BUY) {
             return incoming.price() >= best.price();
         } else {
