@@ -18,15 +18,15 @@ RUN ./gradlew --no-daemon :app:dependencies
 
 COPY app/src app/src
 COPY engine/src engine/src
-RUN ./gradlew --no-daemon :app:installDist -x test
+RUN ./gradlew --no-daemon :app:bootJar
 
 
 FROM eclipse-temurin:25-jre AS runtime
 WORKDIR /app
 
-COPY --from=builder /build/app/build/install/app/ ./
+COPY --from=builder /build/app/build/libs/app.jar .
 
 RUN useradd --system --uid 10001 appuser
 USER appuser
 
-ENTRYPOINT ["./bin/app"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
