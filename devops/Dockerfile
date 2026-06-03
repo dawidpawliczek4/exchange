@@ -1,23 +1,23 @@
 FROM eclipse-temurin:25-jdk AS builder
 WORKDIR /build
 
-COPY gradlew .
+COPY ../gradlew .
 # nie potrzeba
 #COPY gradlew.bat .
-COPY gradle.properties .
-COPY gradle gradle
-COPY settings.gradle.kts .
+COPY ../gradle.properties .
+COPY ../gradle gradle
+COPY ../settings.gradle.kts .
 
-COPY app/build.gradle.kts ./app/
-COPY engine/build.gradle.kts ./engine/
-COPY buildSrc buildSrc
+COPY ../app/build.gradle.kts ./app/
+COPY ../engine/build.gradle.kts ./engine/
+COPY ../buildSrc buildSrc
 
 
 RUN ./gradlew --no-daemon :app:dependencies
 
 
-COPY app/src app/src
-COPY engine/src engine/src
+COPY ../app/src app/src
+COPY ../engine/src engine/src
 RUN ./gradlew --no-daemon :app:bootJar
 
 
