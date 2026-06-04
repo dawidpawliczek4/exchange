@@ -5,10 +5,10 @@ import java.util.*;
 public final class OrderBook {
 
     private final NavigableMap<Long, Deque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
-
     private final NavigableMap<Long, Deque<Order>> asks = new TreeMap<>();
 
-    public List<Trade> submit(Order incoming) {
+    public synchronized List<Trade> submit(Order incoming) {
+
         List<Trade> trades = new ArrayList<>();
 
         NavigableMap<Long, Deque<Order>> opposite = (incoming.side() == Side.BUY) ? asks : bids;
@@ -22,19 +22,23 @@ public final class OrderBook {
                 long restingPrice = bestQueue.getKey();
 
                 long filled = Math.min(incoming.quantity(), maker.quantity());
-                trades.add(new Trade(maker.id(), incoming.id(), restingPrice, filled));
+                trades.add(new Trade(
+                        maker.id(), maker.userId(),
+                        incoming.id(), incoming.userId(),
+                        restingPrice, filled
+                ));
 
                 incoming.reduce(filled);
                 maker.reduce(filled);
 
                 if (maker.quantity() == 0) bestQueue.getValue().pollFirst();
-                if (bestQueue.getValue().isEmpty()) asks.remove(restingPrice);
+                if (bestQueue.getValue().isEmpty()) opposite.remove(restingPrice);
             } else {
                 break;
             }
         }
 
-        if (incoming.quantity() > 0) {
+        if (incoming.quantity() > 0 && !incoming.isMarket()) {
             var ourSide = (incoming.side() == Side.BUY) ? bids : asks;
             ourSide.computeIfAbsent(incoming.price(), _ -> new ArrayDeque<>()).add(incoming);
         }

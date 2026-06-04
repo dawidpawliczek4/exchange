@@ -1,3 +1,7 @@
 package com.dawidpawliczek.engine;
 
-public record Trade(long makerId, long takerId, long price, long quantity) { }
+public record Trade(
+        long makerId, long makerUserId,
+        long takerId, long takerUserId,
+        long price, long quantity
+) { }
