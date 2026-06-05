@@ -1,4 +1,4 @@
-package com.dawidpawliczek.engine;
+package com.dawidpawliczek.engine.domain;
 
 
 public final class Order {

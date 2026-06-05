@@ -1,5 +1,9 @@
 package com.dawidpawliczek.engine;
 
+import com.dawidpawliczek.engine.domain.Order;
+import com.dawidpawliczek.engine.domain.OrderBook;
+import com.dawidpawliczek.engine.domain.Side;
+import com.dawidpawliczek.engine.domain.Trade;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

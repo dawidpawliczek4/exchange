@@ -1,17 +1,23 @@
 package com.dawidpawliczek.app.order
 
-import com.dawidpawliczek.engine.Side
-import com.dawidpawliczek.engine.Trade
+import com.dawidpawliczek.engine.domain.Side
+import com.dawidpawliczek.engine.domain.Trade
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
+import org.springframework.test.annotation.DirtiesContext
+import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.client.RestTestClient
 import org.springframework.test.web.servlet.client.expectBody
 
 @SpringBootTest
 @AutoConfigureRestTestClient
+@ActiveProfiles("test")
+@Import(TestCommandLogConfig::class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class OrderControllerTest {
 
     @Autowired
