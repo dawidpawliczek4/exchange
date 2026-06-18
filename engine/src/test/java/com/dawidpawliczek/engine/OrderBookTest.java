@@ -1,14 +1,13 @@
 package com.dawidpawliczek.engine;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import com.dawidpawliczek.engine.domain.Side;
 import com.dawidpawliczek.engine.domain.Trade;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.Test;
 
 public class OrderBookTest {
 
@@ -23,21 +22,15 @@ public class OrderBookTest {
         var B2 = new Order(4, 40, Side.BUY, 101, false, 9);
 
         var S1Trades = ob.submit(S1);
-        assert(S1Trades.isEmpty());
+        assert (S1Trades.isEmpty());
         var S2Trades = ob.submit(S2);
-        assert(S2Trades.isEmpty());
+        assert (S2Trades.isEmpty());
 
-
-        var expectedB1Trades = List.of(
-                new Trade(1, 10, 3, 30, 100, 4)
-        );
+        var expectedB1Trades = List.of(new Trade(1, 10, 3, 30, 100, 4));
         var B1Trades = ob.submit(B1);
         assertEquals(expectedB1Trades, B1Trades);
 
-        var expectedb2Trades = List.of(
-                new Trade(1, 10, 4, 40, 100, 6),
-                new Trade(2, 20, 4, 40, 101, 3)
-        );
+        var expectedb2Trades = List.of(new Trade(1, 10, 4, 40, 100, 6), new Trade(2, 20, 4, 40, 101, 3));
         var b2Trades = ob.submit(B2);
         assertEquals(expectedb2Trades, b2Trades);
     }
@@ -54,10 +47,7 @@ public class OrderBookTest {
         var b1 = new Order(3, 30, Side.BUY, 100, false, 12);
         var result = ob.submit(b1);
 
-        var expectedb2 = List.of(
-                new Trade(1, 10, 3, 30, 100, 10),
-                new Trade(2, 20, 3, 30, 100, 2)
-        );
+        var expectedb2 = List.of(new Trade(1, 10, 3, 30, 100, 10), new Trade(2, 20, 3, 30, 100, 2));
         assertEquals(expectedb2, result);
     }
 
@@ -72,10 +62,7 @@ public class OrderBookTest {
 
         var b1 = new Order(3, 30, Side.BUY, 1, true, 12);
         var result = ob.submit(b1);
-        var expectedb2 = List.of(
-                new Trade(1, 10, 3, 30, 100, 10),
-                new Trade(2, 20, 3, 30, 100, 2)
-        );
+        var expectedb2 = List.of(new Trade(1, 10, 3, 30, 100, 10), new Trade(2, 20, 3, 30, 100, 2));
 
         assertEquals(expectedb2, result);
     }
@@ -113,9 +100,6 @@ public class OrderBookTest {
         ob.submit(ask);
         var trades = ob.submit(bid);
 
-        assertEquals(List.of(
-                new Trade(1, 42, 2, 42, 100, 3)
-        ), trades);
+        assertEquals(List.of(new Trade(1, 42, 2, 42, 100, 3)), trades);
     }
-
 }

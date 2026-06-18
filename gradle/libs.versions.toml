@@ -10,6 +10,7 @@ kotlinxCoroutines = "1.10.2"
 junit = "5.11.4"
 springBoot = "4.0.6"
 springDependencyManagement = "1.1.7"
+spotless = "8.7.0"
 
 [libraries]
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
@@ -26,6 +27,7 @@ springBootStarterWeb = { module = "org.springframework.boot:spring-boot-starter-
 springBootStarterActuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBootTest = { module = "org.springframework.boot:spring-boot-starter-test" }
 springBootTestRest = { module = "org.springframework.boot:spring-boot-resttestclient" }
+spotlessPlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref="spotless" }
 
 # Libraries can be bundled together for easier import
 [bundles]

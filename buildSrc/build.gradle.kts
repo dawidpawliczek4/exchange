@@ -17,4 +17,5 @@ dependencies {
     // These give the precompiled convention plugins their versions (no `version` allowed in plugins {} there).
     implementation(libs.springBootGradlePlugin)
     implementation(libs.springDependencyManagementPlugin)
+    implementation(libs.spotlessPlugin)
 }

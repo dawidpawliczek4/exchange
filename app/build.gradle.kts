@@ -1,6 +1,7 @@
 plugins {
     // Shared Spring Boot service configuration from buildSrc.
     id("buildsrc.convention.spring-boot-service")
+    id("buildsrc.convention.spotless")
 }
 
 dependencies {

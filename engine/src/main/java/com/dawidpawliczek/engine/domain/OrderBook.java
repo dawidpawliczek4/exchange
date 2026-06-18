@@ -22,11 +22,8 @@ public final class OrderBook {
                 long restingPrice = bestQueue.getKey();
 
                 long filled = Math.min(incoming.quantity(), maker.quantity());
-                trades.add(new Trade(
-                        maker.id(), maker.userId(),
-                        incoming.id(), incoming.userId(),
-                        restingPrice, filled
-                ));
+                trades.add(
+                        new Trade(maker.id(), maker.userId(), incoming.id(), incoming.userId(), restingPrice, filled));
 
                 incoming.reduce(filled);
                 maker.reduce(filled);
@@ -54,5 +51,4 @@ public final class OrderBook {
             return incoming.price() <= best.price();
         }
     }
-
 }

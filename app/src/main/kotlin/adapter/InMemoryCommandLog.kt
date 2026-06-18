@@ -5,7 +5,6 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.function.Consumer
 
 class InMemoryCommandLog : CommandLog {
-
     private val entries = CopyOnWriteArrayList<ByteArray>()
 
     @Synchronized

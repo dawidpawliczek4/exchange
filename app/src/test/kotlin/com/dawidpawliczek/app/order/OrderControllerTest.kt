@@ -17,9 +17,8 @@ import org.springframework.test.web.servlet.client.expectBody
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class OrderControllerTest {
-
     @Autowired
-    lateinit var client: RestTestClient;
+    lateinit var client: RestTestClient
 
     @Test
     fun sell1AndBuy1() {
@@ -30,14 +29,15 @@ class OrderControllerTest {
         Assertions.assertEquals(listOf(Trade(0, 0, 1, 1, 100, 1)), res2)
     }
 
-    private inline fun <reified T: Any> postOrder(body: OrderRequest)=
-        client.post()
+    private inline fun <reified T : Any> postOrder(body: OrderRequest) =
+        client
+            .post()
             .uri("/order")
             .body(body)
             .exchange()
-            .expectStatus().isOk()
+            .expectStatus()
+            .isOk()
             .expectBody<T>()
             .returnResult()
             .responseBody!!
-
 }

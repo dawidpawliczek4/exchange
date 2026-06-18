@@ -6,8 +6,7 @@ import java.util.Random;
 
 public final class Workload {
 
-    private Workload() {
-    }
+    private Workload() {}
 
     /**
      * @param n    number of orders to generate
@@ -18,8 +17,8 @@ public final class Workload {
         Random rnd = new Random(seed);
         PlaceOrderCommand[] cmds = new PlaceOrderCommand[n];
 
-        long mid = 10_000;       // price level orders cluster around
-        int spread = 10;         // prices land in [mid-spread, mid+spread]
+        long mid = 10_000; // price level orders cluster around
+        int spread = 10; // prices land in [mid-spread, mid+spread]
 
         for (int i = 0; i < n; i++) {
             Side side = rnd.nextBoolean() ? Side.BUY : Side.SELL;

@@ -5,19 +5,17 @@ import com.dawidpawliczek.engine.domain.OrderBook;
 import com.dawidpawliczek.engine.domain.Side;
 import com.dawidpawliczek.engine.domain.Trade;
 import com.dawidpawliczek.engine.ports.CommandLog;
-
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
-
 
 public final class OrderService {
 
     // payload: id(8) + userId(8) + side(1) + price(8) + market(1) + quantity(8)
     private static final int PAYLOAD_SIZE = 8 + 8 + 1 + 8 + 1 + 8;
 
-    private final OrderBook orderBook = new OrderBook();                       // single-writer
+    private final OrderBook orderBook = new OrderBook(); // single-writer
     private final AtomicLong counter = new AtomicLong(0);
     private final CopyOnWriteArrayList<Trade> transactionHistory = new CopyOnWriteArrayList<>();
     private final CommandLog commandLog;
@@ -29,13 +27,7 @@ public final class OrderService {
 
     public synchronized List<Trade> place(PlaceOrderCommand cmd) {
         Order order = new Order(
-                counter.getAndIncrement(),
-                cmd.userId(),
-                cmd.side(),
-                cmd.price(),
-                cmd.market(),
-                cmd.quantity()
-        );
+                counter.getAndIncrement(), cmd.userId(), cmd.side(), cmd.price(), cmd.market(), cmd.quantity());
         commandLog.append(serialize(order));
         List<Trade> trades = orderBook.submit(order);
         transactionHistory.addAll(trades);
@@ -53,7 +45,6 @@ public final class OrderService {
             counter.set(order.id() + 1);
         });
     }
-
 
     private static byte[] serialize(Order o) {
         ByteBuffer b = ByteBuffer.allocate(PAYLOAD_SIZE);

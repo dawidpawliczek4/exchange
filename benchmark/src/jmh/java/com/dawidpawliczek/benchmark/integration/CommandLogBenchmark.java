@@ -6,14 +6,13 @@ import com.dawidpawliczek.app.order.OrderRequest;
 import com.dawidpawliczek.benchmark.Workload;
 import com.dawidpawliczek.engine.application.PlaceOrderCommand;
 import com.dawidpawliczek.engine.domain.Trade;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.openjdk.jmh.annotations.*;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
 
 @BenchmarkMode({Mode.Throughput, Mode.AverageTime})
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -37,10 +36,7 @@ public class CommandLogBenchmark {
     @Setup(Level.Trial)
     public void boot() {
         ctx = new SpringApplicationBuilder(ExchangeApplication.class)
-                .properties(
-                        "spring.profiles.active=benchmark",
-                        "exchange.commandlog=" + backend
-                )
+                .properties("spring.profiles.active=benchmark", "exchange.commandlog=" + backend)
                 .web(WebApplicationType.NONE)
                 .run();
         controller = ctx.getBean(OrderController.class);

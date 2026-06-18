@@ -2,7 +2,6 @@ package com.dawidpawliczek.app.order
 
 import com.dawidpawliczek.app.adapter.FileCommandLog
 import com.dawidpawliczek.engine.application.OrderService
-import com.dawidpawliczek.engine.domain.OrderBook
 import com.dawidpawliczek.engine.domain.Side
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -10,9 +9,10 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 
 class OrderControllerRecoveryTest {
-
     @Test
-    fun recoversStateAfterRestart(@TempDir tmp: Path) {
+    fun recoversStateAfterRestart(
+        @TempDir tmp: Path,
+    ) {
         val journal = tmp.resolve("journal.bin")
 
         val before = OrderController(OrderService(FileCommandLog(journal)))

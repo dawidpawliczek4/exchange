@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    id("buildsrc.convention.spotless")
 }
 
 java {

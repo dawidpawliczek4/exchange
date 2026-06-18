@@ -1,6 +1,5 @@
 package com.dawidpawliczek.engine.domain;
 
-
 public final class Order {
 
     private final long id;
@@ -9,7 +8,6 @@ public final class Order {
     private final long price;
     private final boolean market;
     private long quantity;
-
 
     public Order(long id, long userId, Side side, long price, boolean market, long quantity) {
         this.id = id;
@@ -20,12 +18,29 @@ public final class Order {
         this.quantity = quantity;
     }
 
-    public long id()        { return id; }
-    public long userId()    { return userId; }
-    public Side side()      { return side; }
-    public long price()     { return price; }
-    public long quantity()  { return quantity; }
-    public boolean isMarket() { return market; }
+    public long id() {
+        return id;
+    }
+
+    public long userId() {
+        return userId;
+    }
+
+    public Side side() {
+        return side;
+    }
+
+    public long price() {
+        return price;
+    }
+
+    public long quantity() {
+        return quantity;
+    }
+
+    public boolean isMarket() {
+        return market;
+    }
 
     public void reduce(long quantity) {
         this.quantity -= quantity;

@@ -1,6 +1,7 @@
 plugins {
     java
     id("me.champeau.jmh") version "0.7.3"
+    id("buildsrc.convention.spotless")
 }
 
 java {

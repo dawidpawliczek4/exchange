@@ -12,13 +12,13 @@ import java.util.zip.CRC32
 class FileCommandLog(
     private val path: Path = Path.of("journal.bin"),
 ) : CommandLog {
-
-    private val channel: FileChannel = FileChannel.open(
-        path,
-        StandardOpenOption.CREATE,
-        StandardOpenOption.WRITE,
-        StandardOpenOption.APPEND,
-    )
+    private val channel: FileChannel =
+        FileChannel.open(
+            path,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.WRITE,
+            StandardOpenOption.APPEND,
+        )
 
     @Synchronized
     override fun append(payload: ByteArray): Long {
