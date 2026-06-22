@@ -27,7 +27,7 @@ class OrderController(
                 orderRequest.market,
                 orderRequest.quantity,
             ),
-        )
+        ).get()
 
     @GetMapping
     fun getOrderBook(): List<Trade> = orderService.history()
