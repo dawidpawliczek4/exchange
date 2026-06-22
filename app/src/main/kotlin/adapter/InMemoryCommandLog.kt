@@ -1,19 +1,19 @@
 package com.dawidpawliczek.app.adapter
 
 import com.dawidpawliczek.engine.ports.CommandLog
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.function.Consumer
 
 class InMemoryCommandLog : CommandLog {
-    private val entries = CopyOnWriteArrayList<ByteArray>()
+    private val entries = ArrayList<ByteArray>()
 
     @Synchronized
-    override fun append(payload: ByteArray): Long {
-        val offset = entries.size.toLong()
+    override fun append(payload: ByteArray) {
         entries.add(payload.copyOf())
-        return offset
     }
 
+    override fun sync() { }
+
+    @Synchronized
     override fun replay(handler: Consumer<ByteArray>) {
         entries.forEach { handler.accept(it.copyOf()) }
     }

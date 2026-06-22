@@ -21,9 +21,7 @@ class FileCommandLog(
         )
 
     @Synchronized
-    override fun append(payload: ByteArray): Long {
-        val offset = channel.size()
-
+    override fun append(payload: ByteArray) {
         val frame = ByteBuffer.allocate(4 + 4 + payload.size)
         frame.putInt(payload.size)
         frame.putInt(crc(payload))
@@ -31,9 +29,11 @@ class FileCommandLog(
         frame.flip()
 
         while (frame.hasRemaining()) channel.write(frame)
-        channel.force(false)
+    }
 
-        return offset
+    @Synchronized
+    override fun sync() {
+        channel.force(false)
     }
 
     override fun replay(handler: Consumer<ByteArray>) {

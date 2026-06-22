@@ -6,6 +6,9 @@ import com.dawidpawliczek.app.order.OrderRequest;
 import com.dawidpawliczek.benchmark.Workload;
 import com.dawidpawliczek.engine.application.PlaceOrderCommand;
 import com.dawidpawliczek.engine.domain.Trade;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,28 +35,45 @@ public class CommandLogBenchmark {
     private OrderController controller;
     private OrderRequest[] workload;
     private final AtomicInteger idx = new AtomicInteger();
+    private Path journal;
 
     @Setup(Level.Trial)
-    public void boot() {
-        ctx = new SpringApplicationBuilder(ExchangeApplication.class)
-                .properties("spring.profiles.active=benchmark", "exchange.commandlog=" + backend)
-                .web(WebApplicationType.NONE)
-                .run();
-        controller = ctx.getBean(OrderController.class);
-
+    public void genWorkload() {
         PlaceOrderCommand[] cmds = Workload.generate(WORKLOAD_SIZE, 42L);
         workload = new OrderRequest[cmds.length];
         for (int i = 0; i < cmds.length; i++) {
             PlaceOrderCommand c = cmds[i];
             workload[i] = new OrderRequest(c.userId(), c.side(), c.price(), c.market(), c.quantity());
         }
+    }
+
+    @Setup(Level.Iteration)
+    public void boot() throws IOException {
+        SpringApplicationBuilder builder =
+                new SpringApplicationBuilder(ExchangeApplication.class).web(WebApplicationType.NONE);
+        if ("file".equals(backend)) {
+            journal = Files.createTempFile("bench-journal", ".bin");
+            builder.properties(
+                    "spring.profiles.active=benchmark",
+                    "exchange.commandlog=file",
+                    "exchange.commandlog.path=" + journal.toAbsolutePath());
+        } else {
+            builder.properties("spring.profiles.active=benchmark", "exchange.commandlog=memory");
+        }
+        ctx = builder.run();
+        controller = ctx.getBean(OrderController.class);
         idx.set(0);
     }
 
-    @TearDown(Level.Trial)
-    public void shutdown() {
+    @TearDown(Level.Iteration)
+    public void shutdown() throws IOException {
         if (ctx != null) {
             ctx.close();
+            ctx = null;
+        }
+        if (journal != null) {
+            Files.deleteIfExists(journal);
+            journal = null;
         }
     }
 
