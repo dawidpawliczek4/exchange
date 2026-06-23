@@ -24,6 +24,7 @@ kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-j
 kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 # No version here on purpose: the Spring Boot BOM (via dependency-management) controls starter versions.
 springBootStarterWeb = { module = "org.springframework.boot:spring-boot-starter-web" }
+springBootStarterWebsocket = { module = "org.springframework.boot:spring-boot-starter-websocket" }
 springBootStarterActuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBootTest = { module = "org.springframework.boot:spring-boot-starter-test" }
 springBootTestRest = { module = "org.springframework.boot:spring-boot-resttestclient" }
@@ -32,7 +33,7 @@ spotlessPlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", vers
 # Libraries can be bundled together for easier import
 [bundles]
 kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
-springBootEcosystem = ["springBootStarterWeb", "springBootStarterActuator", "springBootTest", "springBootTestRest"]
+springBootEcosystem = ["springBootStarterWeb", "springBootStarterWebsocket", "springBootStarterActuator", "springBootTest", "springBootTestRest"]
 
 [plugins]
 kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

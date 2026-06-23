@@ -76,6 +76,7 @@ public final class OrderService {
                     List<Trade> trades = orderBook.submit(order);
                     transactionHistory.addAll(trades);
                     job.result().complete(trades);
+                    marketFeedSink.publish(trades);
                 }
 
             } catch (InterruptedException e) {

@@ -1,6 +1,5 @@
 package com.dawidpawliczek.app.order
 
-import com.dawidpawliczek.app.adapter.DummyMarketFeedSink
 import com.dawidpawliczek.app.adapter.FileCommandLog
 import com.dawidpawliczek.app.adapter.InMemoryCommandLog
 import com.dawidpawliczek.engine.application.OrderService
@@ -23,9 +22,6 @@ class OrderConfiguration {
     @Bean
     @ConditionalOnProperty(name = ["exchange.commandlog"], havingValue = "memory")
     fun inMemoryCommandLog(): CommandLog = InMemoryCommandLog()
-
-    @Bean
-    fun dummyMarketFeedSink(): MarketFeedSink = DummyMarketFeedSink()
 
     @Bean
     fun orderService(

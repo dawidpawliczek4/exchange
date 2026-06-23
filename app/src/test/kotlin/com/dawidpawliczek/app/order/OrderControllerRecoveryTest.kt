@@ -1,7 +1,7 @@
 package com.dawidpawliczek.app.order
 
-import com.dawidpawliczek.app.adapter.DummyMarketFeedSink
 import com.dawidpawliczek.app.adapter.FileCommandLog
+import com.dawidpawliczek.app.adapter.marketData.DummyMarketFeedSink
 import com.dawidpawliczek.engine.application.OrderService
 import com.dawidpawliczek.engine.domain.Side
 import org.junit.jupiter.api.Assertions.assertEquals

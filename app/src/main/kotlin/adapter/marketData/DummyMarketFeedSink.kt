@@ -1,4 +1,4 @@
-package com.dawidpawliczek.app.adapter
+package com.dawidpawliczek.app.adapter.marketData
 
 import com.dawidpawliczek.engine.domain.Trade
 import com.dawidpawliczek.engine.ports.MarketFeedSink
