@@ -55,7 +55,13 @@ public final class OrderService {
                 queue.drainTo(batch);
                 List<Order> orders = new ArrayList<>(1024);
                 for (Job job : batch) {
-                    Order order = new Order(counter.getAndIncrement(), job.cmd().userId(), job.cmd().side(), job.cmd().price(), job.cmd().market(), job.cmd().quantity());
+                    Order order = new Order(
+                            counter.getAndIncrement(),
+                            job.cmd().userId(),
+                            job.cmd().side(),
+                            job.cmd().price(),
+                            job.cmd().market(),
+                            job.cmd().quantity());
                     orders.add(order);
                     commandLog.append(serialize(order));
                 }

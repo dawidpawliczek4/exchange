@@ -17,7 +17,7 @@ class OrderControllerRecoveryTest {
 
         val before = OrderController(OrderService(FileCommandLog(journal)))
         before.postOrder(OrderRequest(userId = 1, side = Side.BUY, price = 100, market = false, quantity = 5))
-        val trades = before.postOrder(OrderRequest(userId = 2, side = Side.SELL, price = 100, market = false, quantity = 5))
+        val trades = before.postOrder(OrderRequest(userId = 2, side = Side.SELL, price = 100, market = false, quantity = 5)).get()
         assertEquals(1, trades.size)
 
         val after = OrderController(OrderService(FileCommandLog(journal)))

@@ -29,6 +29,20 @@ class OrderControllerTest {
         Assertions.assertEquals(listOf(Trade(0, 0, 1, 1, 100, 1)), res2)
     }
 
+    @Test
+    fun errorWhenInvalidRequest() {
+        postOrderError(OrderRequest(0, Side.BUY, -1, false, 0))
+    }
+
+    private fun postOrderError(body: OrderRequest) =
+        client
+            .post()
+            .uri("/order")
+            .body(body)
+            .exchange()
+            .expectStatus()
+            .isBadRequest()
+
     private inline fun <reified T : Any> postOrder(body: OrderRequest) =
         client
             .post()
