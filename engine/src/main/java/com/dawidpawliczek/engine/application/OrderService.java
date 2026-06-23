@@ -2,11 +2,10 @@ package com.dawidpawliczek.engine.application;
 
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
-import com.dawidpawliczek.engine.domain.Side;
 import com.dawidpawliczek.engine.domain.Trade;
 import com.dawidpawliczek.engine.ports.CommandLog;
 import com.dawidpawliczek.engine.ports.MarketFeedSink;
-import java.nio.ByteBuffer;
+import com.dawidpawliczek.engine.wire.MessageCodec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -19,9 +18,6 @@ import java.util.concurrent.atomic.AtomicLong;
 record Job(PlaceOrderCommand cmd, CompletableFuture<List<Trade>> result) {}
 
 public final class OrderService {
-
-    // payload: id(8) + userId(8) + side(1) + price(8) + market(1) + quantity(8)
-    private static final int PAYLOAD_SIZE = 8 + 8 + 1 + 8 + 1 + 8;
 
     private final OrderBook orderBook = new OrderBook(); // single-writer
     private final AtomicLong counter = new AtomicLong(0);
@@ -65,7 +61,7 @@ public final class OrderService {
                             job.cmd().market(),
                             job.cmd().quantity());
                     orders.add(order);
-                    commandLog.append(serialize(order));
+                    commandLog.append(MessageCodec.encode(order));
                 }
 
                 commandLog.sync();
@@ -99,31 +95,9 @@ public final class OrderService {
 
     private void recover() {
         commandLog.replay(payload -> {
-            Order order = deserialize(payload);
+            Order order = MessageCodec.decodeOrder(payload);
             transactionHistory.addAll(orderBook.submit(order));
             counter.set(order.id() + 1);
         });
-    }
-
-    private static byte[] serialize(Order o) {
-        ByteBuffer b = ByteBuffer.allocate(PAYLOAD_SIZE);
-        b.putLong(o.id());
-        b.putLong(o.userId());
-        b.put((byte) (o.side() == Side.SELL ? 0 : 1));
-        b.putLong(o.price());
-        b.put((byte) (o.isMarket() ? 1 : 0));
-        b.putLong(o.quantity());
-        return b.array();
-    }
-
-    private static Order deserialize(byte[] payload) {
-        ByteBuffer b = ByteBuffer.wrap(payload);
-        long id = b.getLong();
-        long userId = b.getLong();
-        Side side = b.get() == 0 ? Side.SELL : Side.BUY;
-        long price = b.getLong();
-        boolean market = b.get() == 1;
-        long quantity = b.getLong();
-        return new Order(id, userId, side, price, market, quantity);
     }
 }

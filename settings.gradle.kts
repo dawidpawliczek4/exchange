@@ -22,5 +22,6 @@ plugins {
 include(":app")
 include(":engine")
 include(":benchmark")
+include(":matching-service")
 
 rootProject.name = "exchange"
