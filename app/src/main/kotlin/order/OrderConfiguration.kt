@@ -1,9 +1,11 @@
 package com.dawidpawliczek.app.order
 
+import com.dawidpawliczek.app.adapter.DummyMarketFeedSink
 import com.dawidpawliczek.app.adapter.FileCommandLog
 import com.dawidpawliczek.app.adapter.InMemoryCommandLog
 import com.dawidpawliczek.engine.application.OrderService
 import com.dawidpawliczek.engine.ports.CommandLog
+import com.dawidpawliczek.engine.ports.MarketFeedSink
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -23,5 +25,11 @@ class OrderConfiguration {
     fun inMemoryCommandLog(): CommandLog = InMemoryCommandLog()
 
     @Bean
-    fun orderService(commandLog: CommandLog) = OrderService(commandLog)
+    fun dummyMarketFeedSink(): MarketFeedSink = DummyMarketFeedSink()
+
+    @Bean
+    fun orderService(
+        commandLog: CommandLog,
+        marketFeedSink: MarketFeedSink,
+    ) = OrderService(commandLog, marketFeedSink)
 }

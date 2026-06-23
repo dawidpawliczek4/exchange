@@ -5,6 +5,7 @@ import com.dawidpawliczek.engine.domain.OrderBook;
 import com.dawidpawliczek.engine.domain.Side;
 import com.dawidpawliczek.engine.domain.Trade;
 import com.dawidpawliczek.engine.ports.CommandLog;
+import com.dawidpawliczek.engine.ports.MarketFeedSink;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,15 +27,16 @@ public final class OrderService {
     private final AtomicLong counter = new AtomicLong(0);
     private final Queue<Trade> transactionHistory = new ConcurrentLinkedQueue<>();
     private final CommandLog commandLog;
+    private final MarketFeedSink marketFeedSink;
 
     private final BlockingQueue<Job> queue = new ArrayBlockingQueue<>(1 << 16);
     private final Thread writerThread;
     private volatile boolean running = true;
 
-    public OrderService(CommandLog commandLog) {
+    public OrderService(CommandLog commandLog, MarketFeedSink marketFeedSink) {
         this.commandLog = commandLog;
+        this.marketFeedSink = marketFeedSink;
         recover();
-
         this.writerThread = new Thread(this::writerLoop, "matching-writer");
         this.writerThread.start();
     }

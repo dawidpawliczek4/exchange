@@ -1,2 +1,7 @@
 exchange:
   commandlog: memory
+
+server:
+  tomcat:
+    accept-count: 2000
+    max-connections: 4000
