@@ -9,22 +9,6 @@ I wanted to understand two things:
 
 ---
 
-## Why hexagonal
-
-So I can plug in different implementations of the same port and benchmark them side by side.
-
-Some claude's visualization of architecture:
-
-```
-                 driving (inbound)                      driven (outbound)
-                        │                                       │
-   HTTP  ──►  OrderController ──►  OrderService  ──►  CommandLog (port)
-   JMH   ──►  (benchmark)         (core, pure)              │
-                                       │            ┌───────┴────────┐
-                                  OrderBook      FileCommandLog   InMemoryCommandLog
-                                  (domain)       (fsync WAL)      (zero I/O)
-```
-
 ### Modules
 
 | Module | Language             | Role                       |
@@ -33,8 +17,6 @@ Some claude's visualization of architecture:
 | `:app` | Kotlin + Spring Boot | Driving & driven adapters. |
 | `:benchmark` | Java + JMH           | Measures the engine.       |
 
-Keeping the engine framework-free is deliberate: the core stays deterministic and trivially testable,
-and the heavy machinery (Spring, I/O) lives only in adapters that can be replaced.
 
 ---
 
