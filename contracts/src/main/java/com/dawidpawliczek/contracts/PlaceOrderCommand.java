@@ -1,5 +1,3 @@
-package com.dawidpawliczek.engine.application;
-
-import com.dawidpawliczek.engine.domain.Side;
+package com.dawidpawliczek.contracts;
 
 public record PlaceOrderCommand(long userId, Side side, long price, boolean market, long quantity) {}

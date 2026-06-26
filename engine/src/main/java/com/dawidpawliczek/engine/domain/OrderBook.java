@@ -1,5 +1,7 @@
 package com.dawidpawliczek.engine.domain;
 
+import com.dawidpawliczek.contracts.Side;
+import com.dawidpawliczek.contracts.Trade;
 import java.util.*;
 
 public final class OrderBook {

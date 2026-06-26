@@ -11,7 +11,7 @@ junit = "5.11.4"
 springBoot = "4.0.6"
 springDependencyManagement = "1.1.7"
 spotless = "8.7.0"
-kafka = "3.9.0"
+kafka = "4.3.1"
 
 [libraries]
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
@@ -24,12 +24,14 @@ kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.r
 kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJSON" }
 kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 # No version here on purpose: the Spring Boot BOM (via dependency-management) controls starter versions.
+# Spring Boot 4 modularized auto-config: the starter pulls spring-kafka AND the spring-boot-kafka
+# autoconfigure module, which is what registers the KafkaTemplate bean. Plain spring-kafka does not.
 springBootStarterWeb = { module = "org.springframework.boot:spring-boot-starter-web" }
 springBootStarterWebsocket = { module = "org.springframework.boot:spring-boot-starter-websocket" }
 springBootStarterActuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBootTest = { module = "org.springframework.boot:spring-boot-starter-test" }
 springBootTestRest = { module = "org.springframework.boot:spring-boot-resttestclient" }
-springKafka = { module = "org.springframework.kafka:spring-kafka" }
+springKafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
 spotlessPlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref="spotless" }
 kafkaClients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
 

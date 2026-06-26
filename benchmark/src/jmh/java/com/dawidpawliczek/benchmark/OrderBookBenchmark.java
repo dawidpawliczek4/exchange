@@ -1,6 +1,6 @@
 package com.dawidpawliczek.benchmark;
 
-import com.dawidpawliczek.engine.application.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.PlaceOrderCommand;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import java.util.concurrent.TimeUnit;

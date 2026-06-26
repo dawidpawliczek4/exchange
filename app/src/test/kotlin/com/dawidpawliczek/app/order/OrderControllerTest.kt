@@ -1,57 +1,55 @@
 package com.dawidpawliczek.app.order
 
-import com.dawidpawliczek.engine.domain.Side
-import com.dawidpawliczek.engine.domain.Trade
-import org.junit.jupiter.api.Assertions
+import com.dawidpawliczek.contracts.PlaceOrderCommand
+import com.dawidpawliczek.contracts.Side
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.client.RestTestClient
-import org.springframework.test.web.servlet.client.expectBody
 
+/**
+ * The gateway no longer matches orders — it validates and hands the command to Kafka. So we test
+ * exactly that contract: a valid order publishes one command and returns 202; an invalid one is
+ * rejected with 400 and nothing is published. The publisher (and thus Kafka) is mocked away.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureRestTestClient
 @ActiveProfiles("test")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class OrderControllerTest {
     @Autowired
     lateinit var client: RestTestClient
 
-    @Test
-    fun sell1AndBuy1() {
-        val res: List<Trade> = postOrder(OrderRequest(0, Side.BUY, 100, false, 1))
-        Assertions.assertEquals(emptyList<Trade>(), res)
-
-        val res2: List<Trade> = postOrder(OrderRequest(1, Side.SELL, 100, false, 1))
-        Assertions.assertEquals(listOf(Trade(0, 0, 1, 1, 100, 1)), res2)
-    }
+    @MockitoBean
+    lateinit var publisher: OrderCommandPublisher
 
     @Test
-    fun errorWhenInvalidRequest() {
-        postOrderError(OrderRequest(0, Side.BUY, -1, false, 0))
-    }
-
-    private fun postOrderError(body: OrderRequest) =
+    fun publishesCommandAndAccepts() {
         client
             .post()
             .uri("/order")
-            .body(body)
+            .body(OrderRequest(0, Side.BUY, 100, false, 1))
+            .exchange()
+            .expectStatus()
+            .isAccepted()
+
+        verify(publisher).publish(PlaceOrderCommand(0, Side.BUY, 100, false, 1))
+    }
+
+    @Test
+    fun rejectsInvalidRequest() {
+        client
+            .post()
+            .uri("/order")
+            .body(OrderRequest(0, Side.BUY, -1, false, 0))
             .exchange()
             .expectStatus()
             .isBadRequest()
 
-    private inline fun <reified T : Any> postOrder(body: OrderRequest) =
-        client
-            .post()
-            .uri("/order")
-            .body(body)
-            .exchange()
-            .expectStatus()
-            .isOk()
-            .expectBody<T>()
-            .returnResult()
-            .responseBody!!
+        verifyNoInteractions(publisher)
+    }
 }

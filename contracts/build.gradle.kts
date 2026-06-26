@@ -10,10 +10,6 @@ java {
 }
 
 dependencies {
-    // `api`, not `implementation`: Trade and PlaceOrderCommand appear in OrderService's public
-    // signatures, so consumers of :engine legitimately need :contracts on their compile classpath.
-    api(project(":contracts"))
-
     testImplementation(libs.junitJupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

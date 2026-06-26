@@ -12,9 +12,7 @@ java {
 
 dependencies {
     implementation(project(":engine"))
-    implementation(project(":app"))
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.springBoot.get()}"))
-    implementation("org.springframework.boot:spring-boot-starter")
+    implementation(project(":contracts"))
 }
 
 jmh {

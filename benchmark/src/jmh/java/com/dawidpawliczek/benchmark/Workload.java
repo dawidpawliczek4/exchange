@@ -1,7 +1,7 @@
 package com.dawidpawliczek.benchmark;
 
-import com.dawidpawliczek.engine.application.PlaceOrderCommand;
-import com.dawidpawliczek.engine.domain.Side;
+import com.dawidpawliczek.contracts.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.Side;
 import java.util.Random;
 
 public final class Workload {

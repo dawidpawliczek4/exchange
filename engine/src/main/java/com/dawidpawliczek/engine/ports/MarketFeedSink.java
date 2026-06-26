@@ -1,6 +1,6 @@
 package com.dawidpawliczek.engine.ports;
 
-import com.dawidpawliczek.engine.domain.Trade;
+import com.dawidpawliczek.contracts.Trade;
 import java.util.List;
 
 public interface MarketFeedSink {

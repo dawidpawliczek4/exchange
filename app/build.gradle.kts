@@ -4,6 +4,6 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":engine"))
+    implementation(project(":contracts"))
     implementation(libs.springKafka)
 }

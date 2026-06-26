@@ -1,6 +1,6 @@
-package com.dawidpawliczek.app.adapter.marketData
+package com.dawidpawliczek.matching.adapter
 
-import com.dawidpawliczek.engine.domain.Trade
+import com.dawidpawliczek.contracts.Trade
 import com.dawidpawliczek.engine.ports.MarketFeedSink
 
 class DummyMarketFeedSink : MarketFeedSink {

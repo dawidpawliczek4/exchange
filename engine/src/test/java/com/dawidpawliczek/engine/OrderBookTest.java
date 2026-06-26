@@ -2,10 +2,10 @@ package com.dawidpawliczek.engine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.dawidpawliczek.contracts.Side;
+import com.dawidpawliczek.contracts.Trade;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
-import com.dawidpawliczek.engine.domain.Side;
-import com.dawidpawliczek.engine.domain.Trade;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

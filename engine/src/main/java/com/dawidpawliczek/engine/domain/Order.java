@@ -1,5 +1,7 @@
 package com.dawidpawliczek.engine.domain;
 
+import com.dawidpawliczek.contracts.Side;
+
 public final class Order {
 
     private final long id;

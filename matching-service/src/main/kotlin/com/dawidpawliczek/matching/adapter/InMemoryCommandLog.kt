@@ -1,4 +1,4 @@
-package com.dawidpawliczek.app.adapter
+package com.dawidpawliczek.matching.adapter
 
 import com.dawidpawliczek.engine.ports.CommandLog
 import java.util.function.Consumer

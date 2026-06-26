@@ -1,11 +1,12 @@
 package com.dawidpawliczek.engine.application;
 
+import com.dawidpawliczek.contracts.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.Trade;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
-import com.dawidpawliczek.engine.domain.Trade;
 import com.dawidpawliczek.engine.ports.CommandLog;
 import com.dawidpawliczek.engine.ports.MarketFeedSink;
-import com.dawidpawliczek.engine.wire.MessageCodec;
+import com.dawidpawliczek.engine.wire.WalCodec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -44,6 +45,16 @@ public final class OrderService {
         return box;
     }
 
+    public void close() {
+        running = false;
+        writerThread.interrupt();
+        try {
+            writerThread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     void writerLoop() {
         List<Job> batch = new ArrayList<>(1024);
         while (running) {
@@ -61,7 +72,7 @@ public final class OrderService {
                             job.cmd().market(),
                             job.cmd().quantity());
                     orders.add(order);
-                    commandLog.append(MessageCodec.encode(order));
+                    commandLog.append(WalCodec.encode(order));
                 }
 
                 commandLog.sync();
@@ -71,8 +82,8 @@ public final class OrderService {
                     Job job = batch.get(i);
                     List<Trade> trades = orderBook.submit(order);
                     transactionHistory.addAll(trades);
-                    job.result().complete(trades);
                     marketFeedSink.publish(trades);
+                    job.result().complete(trades);
                 }
 
             } catch (InterruptedException e) {
@@ -95,7 +106,7 @@ public final class OrderService {
 
     private void recover() {
         commandLog.replay(payload -> {
-            Order order = MessageCodec.decodeOrder(payload);
+            Order order = WalCodec.decodeOrder(payload);
             transactionHistory.addAll(orderBook.submit(order));
             counter.set(order.id() + 1);
         });

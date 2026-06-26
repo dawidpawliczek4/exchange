@@ -1,11 +1,12 @@
 # :benchmark
 
-JMH benchmarks for the exchange, at two altitudes:
+JMH benchmarks for the exchange.
 
 | Benchmark | Scope | Stack |
 |---|---|---|
 | `OrderBookBenchmark` | **unit / L0** | pure `OrderBook`, no Spring, no I/O |
-| `integration.CommandLogBenchmark` | **integration** | `OrderController.postOrder` → `OrderService` → `OrderBook` + `CommandLog`, inside a real Spring context |
+
+A command-log / WAL benchmark (driving `OrderService` directly) is a TODO.
 
 ## Run
 
