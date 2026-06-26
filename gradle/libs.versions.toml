@@ -29,6 +29,7 @@ springBootStarterWebsocket = { module = "org.springframework.boot:spring-boot-st
 springBootStarterActuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBootTest = { module = "org.springframework.boot:spring-boot-starter-test" }
 springBootTestRest = { module = "org.springframework.boot:spring-boot-resttestclient" }
+springKafka = { module = "org.springframework.kafka:spring-kafka" }
 spotlessPlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref="spotless" }
 kafkaClients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
 
