@@ -13,8 +13,8 @@ I wanted to understand two things:
 
 | Module | Language             | Role                              |
 |---|----------------------|-----------------------------------|
-| `:contracts` | pure Java            | The wire: shared types + codec.   |
-| `:engine` | pure Java            | The core.                         |
+| `:contracts` |  Java            | The wire: shared types + codec.   |
+| `:engine` |  Java            | The core.                         |
 | `:matching-service` | Kotlin               | Runs the engine off Kafka.        |
 | `:app` | Kotlin + Spring Boot | Gateway: REST in, trades out.     |
 | `:benchmark` | Java + JMH           | Measures the engine.              |
@@ -27,43 +27,58 @@ publishes the trades back; the gateway fans those out over WebSocket.
 
 ## Running it
 
-Requires JDK 25 (the Gradle toolchain will fetch it if missing) and a Kafka broker.
+Brings up Kafka, the matching service, and the gateway (requires Docker):
 
 ```bash
-# Start Kafka
-docker compose -f devops/docker-compose.yml up -d
+docker compose -f devops/docker-compose.yml up -d --build
+```
 
-# Run the matching service (engine + Kafka consumer/producer)
-./gradlew :matching-service:run
+Then drive it:
 
-# Run the gateway (REST + WebSocket), in another terminal
-./gradlew :app:bootRun
-
-# Watch trades over WebSocket (subscribe first, in another terminal)
+```bash
+# Watch trades over WebSocket
 websocat ws://localhost:8080/marketdata
 
-# Then POST two crossing orders — each returns 202, the gateway is fire-and-forget
+# POST two crossing orders
 curl -X POST localhost:8080/order -H 'Content-Type: application/json' \
   -d '{"userId":1,"side":"BUY","price":100,"market":false,"quantity":5}'
 curl -X POST localhost:8080/order -H 'Content-Type: application/json' \
   -d '{"userId":2,"side":"SELL","price":100,"market":false,"quantity":5}'
-# → the trade shows up in the websocat terminal
+  
+# → the trade shows up in the websocat
+
+# Shut down
+docker compose -f devops/docker-compose.yml down
 ```
 
-```bash
-# Run all tests
-./gradlew test
+### Tests & benchmarks
 
-# Run the benchmarks (JMH)
-./gradlew :benchmark:jmh
+Requires JDK 25 (the Gradle toolchain fetches it if missing).
+
+```bash
+./gradlew test            # all module tests
+./gradlew :benchmark:jmh  # JMH benchmarks
+```
+
+### Local development
+
+To iterate on a service without rebuilding its image, bring up just Kafka and run the service from
+Gradle (it defaults to `localhost:9092`):
+
+```bash
+docker compose -f devops/docker-compose.yml up -d kafka
+./gradlew :matching-service:run
+./gradlew :app:bootRun
 ```
 
 ### Configuration
 
 The matching service persists every order to a write-ahead log (`journal.bin`) and rebuilds its book
-from it on restart.
+from it on restart. Under Compose this lives on the `journal` volume, so it survives container
+restarts.
 
-Kafka bootstrap defaults to `localhost:9092`. Override per service:
+Kafka bootstrap defaults to `localhost:9092`; Compose wires the services to the broker at
+`kafka:29092`. Override per service:
 
 - matching service — `KAFKA_BOOTSTRAP_SERVERS`
 - gateway — `SPRING_KAFKA_BOOTSTRAP_SERVERS`
