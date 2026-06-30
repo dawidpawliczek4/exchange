@@ -15,6 +15,7 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.kafka.common.serialization.StringSerializer
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.Properties
@@ -48,6 +49,10 @@ fun main() {
     val commandLog = FileCommandLog(Path.of("journal.bin"))
     val orderService = OrderService(commandLog, KafkaMarketFeedSink(producer))
 
+    val heartbeat = Path.of("/tmp/alive")
+    val heartbeatIntervalMillis = 5_000L
+    var lastHeartbeat = 0L
+
     val mainThread = Thread.currentThread()
     Runtime.getRuntime().addShutdownHook(
         Thread {
@@ -60,6 +65,13 @@ fun main() {
         consumer.subscribe(listOf(Topics.COMMANDS))
         while (true) {
             val records = consumer.poll(Duration.ofMillis(100))
+
+            val now = System.currentTimeMillis()
+            if (now - lastHeartbeat >= heartbeatIntervalMillis) {
+                Files.write(heartbeat, ByteArray(0))
+                lastHeartbeat = now
+            }
+
             if (records.isEmpty) continue
 
             val futures = ArrayList<CompletableFuture<List<Trade>>>(records.count())

@@ -1,73 +1,76 @@
-
-image := "exchange:dev"
-dockerfile := "devops/Dockerfile"
+strimzi_version := "1.1.0"
+cluster := "exchange"
 
 default:
     @just --list
 
-# --- Gradle (kod aplikacji) --------------------------------------------------
+# --- Gradle ------------------------------------------------------------------
 
-# Zbuduj aplikację (jar) Gradle'em
+# Build everything with Gradle
 build:
     ./gradlew build
 
-# Uruchom wszystkie testy/checki
+# Run tests/checks
 test:
     ./gradlew check
 
-# Wyczyść artefakty buildu
+# Clean build artifacts
 clean:
     ./gradlew clean
 
-# --- Docker / obraz ----------------------------------------------------------
+# --- Docker Compose (local stack) --------------------------------------------
 
-# Zbuduj obraz Dockera PROSTO do minikube (bez pushowania do rejestru).
-minikube-build:
-    minikube image build -f {{dockerfile}} -t {{image}} .
+# Bring up the whole stack (Kafka + matching + gateway)
+compose-up:
+    docker compose -f devops/docker-compose.yml up -d --build
 
-docker-build:
-    docker build -f {{dockerfile}} -t {{image}} .
+# Stop the stack
+compose-down:
+    docker compose -f devops/docker-compose.yml down
 
-docker-run:
-    docker run --rm -p 8080:8080 {{image}}
+# --- Kubernetes (kind + Strimzi) ---------------------------------------------
 
-# --- Kubernetes --------------------------------------------------------------
+# Full bootstrap from scratch: kind + Strimzi + Kafka + gateway + matching
+up: cluster strimzi kafka images load apps
 
-# Wgraj manifesty na klaster (deployment + service).
-deploy:
-    kubectl apply -f devops/deployment.yml -f devops/service.yml
+# Create the kind cluster
+cluster:
+    kind create cluster --name {{cluster}}
 
-# Pełny cykl: zbuduj obraz, wgraj manifesty, wymuś świeży rollout podów.
-redeploy: docker-build deploy
-    kubectl rollout restart deployment/exchange
-    kubectl rollout status deployment/exchange
+# Install the Strimzi operator (pinned) into the kafka namespace
+strimzi:
+    kubectl apply -f devops/k8s/namespaces.yaml
+    curl -sL https://github.com/strimzi/strimzi-kafka-operator/releases/download/{{strimzi_version}}/strimzi-cluster-operator-{{strimzi_version}}.yaml \
+      | sed 's/namespace: .*/namespace: kafka/' \
+      | kubectl apply -n kafka -f -
+    kubectl wait --for=condition=Available deploy/strimzi-cluster-operator -n kafka --timeout=300s
 
-# Usuń aplikację z klastra (zostawia sam klaster nietknięty)
-undeploy:
-    kubectl delete -f devops/deployment.yml -f devops/service.yml
+# Bring up the Kafka cluster
+kafka:
+    kubectl apply -f devops/k8s/kafka.yaml
+    kubectl wait kafka/exchange-kafka -n kafka --for=condition=Ready --timeout=300s
 
-# Pokaż stan: pody, service, endpointy
+# Build both service images
+images:
+    docker build -f devops/app.Dockerfile -t exchange-gateway:dev .
+    docker build -f devops/matching-service.Dockerfile -t exchange-matching:dev .
+
+# Load the service images into the kind cluster
+load:
+    kind load docker-image exchange-gateway:dev exchange-matching:dev --name {{cluster}}
+
+# Deploy gateway + matching and wait for them
+apps:
+    kubectl apply -f devops/k8s/namespaces.yaml
+    kubectl apply -f devops/k8s/gateway.yaml -f devops/k8s/matching.yaml
+    kubectl rollout status deploy/gateway -n exchange --timeout=180s
+    kubectl rollout status statefulset/matching -n exchange --timeout=180s
+
+# Show cluster state (Kafka layer + apps)
 status:
-    kubectl get deployment,pods,service,endpoints -l app=exchange
+    kubectl get kafka,kafkanodepool,kafkatopic,pods -n kafka
+    kubectl get pods,statefulset,deploy -n exchange
 
-# Streamuj logi ze wszystkich podów aplikacji (Ctrl+C kończy)
-logs:
-    kubectl logs -f -l app=exchange --all-containers --prefix
-
-# Port-forward Service → localhost:8080 (Ctrl+C kończy).
-forward:
-    kubectl port-forward service/exchange 8080:80
-
-# --- minikube (klaster) ------------------------------------------------------
-
-# Wystartuj klaster minikube (jeśli nie działa)
-cluster-up:
-    minikube start
-
-# Stan klastra minikube
-cluster-status:
-    minikube status
-
-# Zatrzymaj klaster (stan zostaje, można wrócić przez cluster-up)
-cluster-down:
-    minikube stop
+# Delete the kind cluster (everything goes)
+down:
+    kind delete cluster --name {{cluster}}

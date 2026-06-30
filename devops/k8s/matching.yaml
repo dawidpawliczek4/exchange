@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: matching
+  namespace: exchange
+spec:
+  clusterIP: None
+  selector:
+    app: matching
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: matching
+  namespace: exchange
+spec:
+  serviceName: matching
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matching
+  template:
+    metadata:
+      labels:
+        app: matching
+    spec:
+      containers:
+        - name: matching
+          image: exchange-matching:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: exchange-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092
+          volumeMounts:
+            - name: journal
+              mountPath: /data
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - '[ $(($(date +%s) - $(stat -c %Y /tmp/alive))) -lt 30 ]'
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 500m
+            limits:
+              memory: 1Gi
+              cpu: "2"
+  volumeClaimTemplates:
+    - metadata:
+        name: journal
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

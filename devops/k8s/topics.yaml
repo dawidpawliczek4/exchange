@@ -1,0 +1,21 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: orders.commands
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: exchange-kafka
+spec:
+  partitions: 1
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: orders.trades
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: exchange-kafka
+spec:
+  partitions: 1
+  replicas: 1
