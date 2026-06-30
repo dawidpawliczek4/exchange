@@ -3,6 +3,7 @@ package com.dawidpawliczek.app.order
 import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Side
 import org.springframework.http.HttpStatus
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -18,12 +19,13 @@ class OrderController(
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun postOrder(
+        @AuthenticationPrincipal userId: Long,
         @RequestBody orderRequest: OrderRequest,
     ) {
         validate(orderRequest)
         publisher.publish(
             PlaceOrderCommand(
-                orderRequest.userId,
+                userId,
                 orderRequest.side,
                 orderRequest.price,
                 orderRequest.market,
@@ -44,7 +46,6 @@ class OrderController(
 }
 
 data class OrderRequest(
-    val userId: Long,
     val side: Side,
     val price: Long,
     val market: Boolean,

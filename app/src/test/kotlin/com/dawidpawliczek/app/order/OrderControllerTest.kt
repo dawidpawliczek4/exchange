@@ -1,6 +1,8 @@
 package com.dawidpawliczek.app.order
 
 import com.dawidpawliczek.app.TestcontainersConfiguration
+import com.dawidpawliczek.app.auth.JwtService
+import com.dawidpawliczek.app.auth.user.User
 import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Side
 import org.junit.jupiter.api.Test
@@ -22,20 +24,24 @@ class OrderControllerTest {
     @Autowired
     lateinit var client: RestTestClient
 
+    @Autowired
+    lateinit var jwtService: JwtService
+
     @MockitoBean
     lateinit var publisher: OrderCommandPublisher
 
     @Test
-    fun publishesCommandAndAccepts() {
+    fun publishesCommandForAuthenticatedUserAndAccepts() {
         client
             .post()
             .uri("/order")
-            .body(OrderRequest(0, Side.BUY, 100, false, 1))
+            .header("Authorization", "Bearer ${tokenFor(42L)}")
+            .body(OrderRequest(Side.BUY, 100, false, 1))
             .exchange()
             .expectStatus()
             .isAccepted()
 
-        verify(publisher).publish(PlaceOrderCommand(0, Side.BUY, 100, false, 1))
+        verify(publisher).publish(PlaceOrderCommand(42, Side.BUY, 100, false, 1))
     }
 
     @Test
@@ -43,11 +49,27 @@ class OrderControllerTest {
         client
             .post()
             .uri("/order")
-            .body(OrderRequest(0, Side.BUY, -1, false, 0))
+            .header("Authorization", "Bearer ${tokenFor(42L)}")
+            .body(OrderRequest(Side.BUY, -1, false, 0))
             .exchange()
             .expectStatus()
             .isBadRequest()
 
         verifyNoInteractions(publisher)
     }
+
+    @Test
+    fun rejectsUnauthenticatedRequest() {
+        client
+            .post()
+            .uri("/order")
+            .body(OrderRequest(Side.BUY, 100, false, 1))
+            .exchange()
+            .expectStatus()
+            .isForbidden()
+
+        verifyNoInteractions(publisher)
+    }
+
+    private fun tokenFor(userId: Long) = jwtService.issueAccessToken(User(id = userId))
 }
