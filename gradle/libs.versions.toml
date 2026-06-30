@@ -12,12 +12,15 @@ springBoot = "4.0.6"
 springDependencyManagement = "1.1.7"
 spotless = "8.7.0"
 kafka = "4.3.1"
+jjwt = "0.13.0"
+testcontainers = "2.0.5"
 
 [libraries]
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 # Gradle plugin JARs consumed on buildSrc's classpath (so precompiled convention plugins can apply them by id).
 kotlinAllopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
+kotlinNoarg = { module = "org.jetbrains.kotlin:kotlin-noarg", version.ref = "kotlin" }
 springBootGradlePlugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "springBoot" }
 springDependencyManagementPlugin = { module = "io.spring.gradle:dependency-management-plugin", version.ref = "springDependencyManagement" }
 kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
@@ -34,6 +37,19 @@ springBootTestRest = { module = "org.springframework.boot:spring-boot-resttestcl
 springKafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
 spotlessPlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref="spotless" }
 kafkaClients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
+springBootStarterSecurity = { module = "org.springframework.boot:spring-boot-starter-security" }
+springBootStarterDataJpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+springBootStarterValidation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+postgresql = { module = "org.postgresql:postgresql" }
+springBootTestcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+testcontainersJunit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
+testcontainersPostgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+jjwtApi = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
+jjwtImpl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
+jjwtJackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
+springBootFlyway = { module = "org.springframework.boot:spring-boot-flyway" }
+flywayCore = { module = "org.flywaydb:flyway-core" }
+flywayPostgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 
 # Libraries can be bundled together for easier import
 [bundles]

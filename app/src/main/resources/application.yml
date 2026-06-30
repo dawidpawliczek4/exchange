@@ -11,6 +11,14 @@ spring:
             auto-offset-reset: latest
             key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
             value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    datasource:
+        url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/exchange}
+        username: ${SPRING_DATASOURCE_USERNAME:exchange}
+        password: ${SPRING_DATASOURCE_PASSWORD:exchange}
+    jpa:
+        hibernate:
+            ddl-auto: validate
+        open-in-view: false
 management:
     endpoint:
         health:
@@ -21,3 +29,9 @@ management:
         web:
             exposure:
                 include: health,info
+
+jwt:
+    issuer: exchange
+    secret: ${JWT_SECRET:veryhardtoguessveryhardtoguessveryhardtoguessveryhardtoguess}
+    access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:3600}
+    refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:2592000}

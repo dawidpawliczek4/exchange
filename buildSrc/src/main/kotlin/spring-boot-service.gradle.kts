@@ -7,8 +7,8 @@ import org.gradle.kotlin.dsl.getByType
 
 plugins {
     kotlin("jvm")
-    // Opens Kotlin classes annotated with Spring stereotypes so the framework can proxy them.
     kotlin("plugin.spring")
+    kotlin("plugin.jpa")
     id("org.springframework.boot")
     id("io.spring.dependency-management")
 }
