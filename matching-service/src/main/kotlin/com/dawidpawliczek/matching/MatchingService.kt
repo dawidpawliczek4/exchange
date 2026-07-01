@@ -1,7 +1,7 @@
 package com.dawidpawliczek.matching
 
+import com.dawidpawliczek.contracts.MarketEvent
 import com.dawidpawliczek.contracts.Topics
-import com.dawidpawliczek.contracts.Trade
 import com.dawidpawliczek.contracts.WireCodec
 import com.dawidpawliczek.engine.application.OrderService
 import com.dawidpawliczek.matching.adapter.FileCommandLog
@@ -74,7 +74,7 @@ fun main() {
 
             if (records.isEmpty) continue
 
-            val futures = ArrayList<CompletableFuture<List<Trade>>>(records.count())
+            val futures = ArrayList<CompletableFuture<List<MarketEvent>>>(records.count())
             for (record in records) {
                 futures.add(orderService.place(WireCodec.decodeCommand(record.value())))
             }

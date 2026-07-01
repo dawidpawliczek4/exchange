@@ -1,17 +1,31 @@
 package com.dawidpawliczek.engine.domain;
 
+import com.dawidpawliczek.contracts.MarketEvent;
 import com.dawidpawliczek.contracts.Side;
 import com.dawidpawliczek.contracts.Trade;
+import com.dawidpawliczek.contracts.TradeEvent;
 import java.util.*;
+import java.util.function.LongSupplier;
 
 public final class OrderBook {
 
     private final NavigableMap<Long, Deque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
     private final NavigableMap<Long, Deque<Order>> asks = new TreeMap<>();
 
-    public synchronized List<Trade> submit(Order incoming) {
+    private final LongSupplier clock;
+    private long seq = 0;
 
-        List<Trade> trades = new ArrayList<>();
+    public OrderBook() {
+        this(System::currentTimeMillis);
+    }
+
+    public OrderBook(LongSupplier clock) {
+        this.clock = clock;
+    }
+
+    public synchronized List<MarketEvent> submit(Order incoming) {
+
+        List<MarketEvent> events = new ArrayList<>();
 
         NavigableMap<Long, Deque<Order>> opposite = (incoming.side() == Side.BUY) ? asks : bids;
 
@@ -24,8 +38,9 @@ public final class OrderBook {
                 long restingPrice = bestQueue.getKey();
 
                 long filled = Math.min(incoming.quantity(), maker.quantity());
-                trades.add(
-                        new Trade(maker.id(), maker.userId(), incoming.id(), incoming.userId(), restingPrice, filled));
+                Trade trade =
+                        new Trade(maker.id(), maker.userId(), incoming.id(), incoming.userId(), restingPrice, filled);
+                events.add(new TradeEvent(++seq, clock.getAsLong(), trade));
 
                 incoming.reduce(filled);
                 maker.reduce(filled);
@@ -42,7 +57,7 @@ public final class OrderBook {
             ourSide.computeIfAbsent(incoming.price(), _ -> new ArrayDeque<>()).add(incoming);
         }
 
-        return trades;
+        return events;
     }
 
     private boolean isMatch(Order incoming, Order best) {

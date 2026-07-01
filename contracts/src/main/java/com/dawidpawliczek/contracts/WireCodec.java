@@ -34,17 +34,52 @@ public final class WireCodec {
 
     public static byte[] encode(Trade t) {
         ByteBuffer b = ByteBuffer.allocate(TRADE_SIZE);
+        writeTradeBody(b, t);
+        return b.array();
+    }
+
+    public static Trade decodeTrade(byte[] payload) {
+        return readTradeBody(ByteBuffer.wrap(payload));
+    }
+
+    private static void writeTradeBody(ByteBuffer b, Trade t) {
         b.putLong(t.makerId());
         b.putLong(t.makerUserId());
         b.putLong(t.takerId());
         b.putLong(t.takerUserId());
         b.putLong(t.price());
         b.putLong(t.quantity());
-        return b.array();
     }
 
-    public static Trade decodeTrade(byte[] payload) {
-        ByteBuffer b = ByteBuffer.wrap(payload);
+    private static Trade readTradeBody(ByteBuffer b) {
         return new Trade(b.getLong(), b.getLong(), b.getLong(), b.getLong(), b.getLong(), b.getLong());
+    }
+
+    // seq(8) + timestamp(8) + type(1), followed by the type-specific body
+    private static final int EVENT_HEADER_SIZE = 8 + 8 + 1;
+    private static final byte TYPE_TRADE = 0;
+
+    public static byte[] encode(MarketEvent event) {
+        return switch (event) {
+            case TradeEvent te -> {
+                ByteBuffer b = ByteBuffer.allocate(EVENT_HEADER_SIZE + TRADE_SIZE);
+                b.putLong(te.seq());
+                b.putLong(te.timestamp());
+                b.put(TYPE_TRADE);
+                writeTradeBody(b, te.trade());
+                yield b.array();
+            }
+        };
+    }
+
+    public static MarketEvent decodeEvent(byte[] payload) {
+        ByteBuffer b = ByteBuffer.wrap(payload);
+        long seq = b.getLong();
+        long timestamp = b.getLong();
+        byte type = b.get();
+        return switch (type) {
+            case TYPE_TRADE -> new TradeEvent(seq, timestamp, readTradeBody(b));
+            default -> throw new IllegalArgumentException("Unknown market event type: " + type);
+        };
     }
 }

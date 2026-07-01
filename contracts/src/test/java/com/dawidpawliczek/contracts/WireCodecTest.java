@@ -23,4 +23,10 @@ class WireCodecTest {
         var trade = new Trade(1, 10, 2, 20, 100, 5);
         assertEquals(trade, WireCodec.decodeTrade(WireCodec.encode(trade)));
     }
+
+    @Test
+    void tradeEventRoundTrip() {
+        var event = new TradeEvent(7, 1_700_000_000_000L, new Trade(1, 10, 2, 20, 100, 5));
+        assertEquals(event, WireCodec.decodeEvent(WireCodec.encode(event)));
+    }
 }

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.dawidpawliczek.contracts.Side;
 import com.dawidpawliczek.contracts.Trade;
+import com.dawidpawliczek.contracts.TradeEvent;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import java.util.List;
@@ -13,7 +14,7 @@ public class OrderBookTest {
 
     @Test
     void testLimitSellThenLimitBuy() {
-        var ob = new OrderBook();
+        var ob = new OrderBook(() -> 0L);
 
         var S1 = new Order(1, 10, Side.SELL, 100, false, 10);
         var S2 = new Order(2, 20, Side.SELL, 101, false, 8);
@@ -26,18 +27,20 @@ public class OrderBookTest {
         var S2Trades = ob.submit(S2);
         assert (S2Trades.isEmpty());
 
-        var expectedB1Trades = List.of(new Trade(1, 10, 3, 30, 100, 4));
+        var expectedB1Trades = List.of(new TradeEvent(1, 0, new Trade(1, 10, 3, 30, 100, 4)));
         var B1Trades = ob.submit(B1);
         assertEquals(expectedB1Trades, B1Trades);
 
-        var expectedb2Trades = List.of(new Trade(1, 10, 4, 40, 100, 6), new Trade(2, 20, 4, 40, 101, 3));
+        var expectedb2Trades = List.of(
+                new TradeEvent(2, 0, new Trade(1, 10, 4, 40, 100, 6)),
+                new TradeEvent(3, 0, new Trade(2, 20, 4, 40, 101, 3)));
         var b2Trades = ob.submit(B2);
         assertEquals(expectedb2Trades, b2Trades);
     }
 
     @Test
     void testCorrectQueueOrder() {
-        var ob = new OrderBook();
+        var ob = new OrderBook(() -> 0L);
 
         var S1 = new Order(1, 10, Side.SELL, 100, false, 10);
         var S2 = new Order(2, 20, Side.SELL, 100, false, 10);
@@ -47,13 +50,15 @@ public class OrderBookTest {
         var b1 = new Order(3, 30, Side.BUY, 100, false, 12);
         var result = ob.submit(b1);
 
-        var expectedb2 = List.of(new Trade(1, 10, 3, 30, 100, 10), new Trade(2, 20, 3, 30, 100, 2));
+        var expectedb2 = List.of(
+                new TradeEvent(1, 0, new Trade(1, 10, 3, 30, 100, 10)),
+                new TradeEvent(2, 0, new Trade(2, 20, 3, 30, 100, 2)));
         assertEquals(expectedb2, result);
     }
 
     @Test
     void testMarketOrder() {
-        var ob = new OrderBook();
+        var ob = new OrderBook(() -> 0L);
 
         var S1 = new Order(1, 10, Side.SELL, 100, false, 10);
         var S2 = new Order(2, 20, Side.SELL, 100, false, 10);
@@ -62,25 +67,29 @@ public class OrderBookTest {
 
         var b1 = new Order(3, 30, Side.BUY, 1, true, 12);
         var result = ob.submit(b1);
-        var expectedb2 = List.of(new Trade(1, 10, 3, 30, 100, 10), new Trade(2, 20, 3, 30, 100, 2));
+        var expectedb2 = List.of(
+                new TradeEvent(1, 0, new Trade(1, 10, 3, 30, 100, 10)),
+                new TradeEvent(2, 0, new Trade(2, 20, 3, 30, 100, 2)));
 
         assertEquals(expectedb2, result);
     }
 
     @Test
-    void testTradeCarriesUserIds() {
-        var ob = new OrderBook();
+    void testTradeCarriesUserIdsAndSeq() {
+        var ob = new OrderBook(() -> 0L);
 
         // maker: user 10 sells, taker: user 30 buys
         var maker = new Order(1, 10, Side.SELL, 100, false, 5);
         var taker = new Order(2, 30, Side.BUY, 100, false, 5);
 
         ob.submit(maker);
-        var trades = ob.submit(taker);
+        var events = ob.submit(taker);
 
-        assertEquals(1, trades.size());
-        var t = trades.getFirst();
+        assertEquals(1, events.size());
+        var event = (TradeEvent) events.getFirst();
 
+        assertEquals(1, event.seq());
+        var t = event.trade();
         assertEquals(1, t.makerId());
         assertEquals(10, t.makerUserId());
         assertEquals(2, t.takerId());
@@ -91,7 +100,7 @@ public class OrderBookTest {
 
     @Test
     void testSelfTradeKeepsBothUserIds() {
-        var ob = new OrderBook();
+        var ob = new OrderBook(() -> 0L);
 
         // same user (42) on both sides — engine doesn't block it, just records both
         var ask = new Order(1, 42, Side.SELL, 100, false, 3);
@@ -100,6 +109,6 @@ public class OrderBookTest {
         ob.submit(ask);
         var trades = ob.submit(bid);
 
-        assertEquals(List.of(new Trade(1, 42, 2, 42, 100, 3)), trades);
+        assertEquals(List.of(new TradeEvent(1, 0, new Trade(1, 42, 2, 42, 100, 3))), trades);
     }
 }

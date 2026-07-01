@@ -18,7 +18,7 @@ class MarketDataConsumer(
 ) {
     @KafkaListener(topics = [Topics.TRADES])
     fun onTrade(payload: ByteArray) {
-        val trade = WireCodec.decodeTrade(payload)
-        handler.broadcast(mapper.writeValueAsString(trade))
+        val event = WireCodec.decodeEvent(payload)
+        handler.broadcast(mapper.writeValueAsString(event))
     }
 }

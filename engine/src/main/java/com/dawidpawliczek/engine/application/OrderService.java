@@ -1,7 +1,7 @@
 package com.dawidpawliczek.engine.application;
 
+import com.dawidpawliczek.contracts.MarketEvent;
 import com.dawidpawliczek.contracts.PlaceOrderCommand;
-import com.dawidpawliczek.contracts.Trade;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import com.dawidpawliczek.engine.ports.CommandLog;
@@ -16,13 +16,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
-record Job(PlaceOrderCommand cmd, CompletableFuture<List<Trade>> result) {}
+record Job(PlaceOrderCommand cmd, CompletableFuture<List<MarketEvent>> result) {}
 
 public final class OrderService {
 
     private final OrderBook orderBook = new OrderBook(); // single-writer
     private final AtomicLong counter = new AtomicLong(0);
-    private final Queue<Trade> transactionHistory = new ConcurrentLinkedQueue<>();
+    private final Queue<MarketEvent> transactionHistory = new ConcurrentLinkedQueue<>();
     private final CommandLog commandLog;
     private final MarketFeedSink marketFeedSink;
 
@@ -38,9 +38,9 @@ public final class OrderService {
         this.writerThread.start();
     }
 
-    public CompletableFuture<List<Trade>> place(PlaceOrderCommand cmd) throws InterruptedException {
+    public CompletableFuture<List<MarketEvent>> place(PlaceOrderCommand cmd) throws InterruptedException {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
-        CompletableFuture<List<Trade>> box = new CompletableFuture<>();
+        CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
         queue.put(new Job(cmd, box));
         return box;
     }
@@ -80,10 +80,10 @@ public final class OrderService {
                 for (int i = 0; i < orders.size(); i++) {
                     Order order = orders.get(i);
                     Job job = batch.get(i);
-                    List<Trade> trades = orderBook.submit(order);
-                    transactionHistory.addAll(trades);
-                    marketFeedSink.publish(trades);
-                    job.result().complete(trades);
+                    List<MarketEvent> events = orderBook.submit(order);
+                    transactionHistory.addAll(events);
+                    marketFeedSink.publish(events);
+                    job.result().complete(events);
                 }
 
             } catch (InterruptedException e) {
@@ -100,7 +100,7 @@ public final class OrderService {
         }
     }
 
-    public List<Trade> history() {
+    public List<MarketEvent> history() {
         return List.copyOf(transactionHistory);
     }
 
