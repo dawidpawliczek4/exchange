@@ -1,4 +1,4 @@
-package com.dawidpawliczek.app.adapter.kafka
+package com.dawidpawliczek.app.config
 
 import com.dawidpawliczek.contracts.Topics
 import org.springframework.context.annotation.Bean

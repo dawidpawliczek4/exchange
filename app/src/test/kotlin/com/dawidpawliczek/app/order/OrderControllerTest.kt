@@ -3,6 +3,8 @@ package com.dawidpawliczek.app.order
 import com.dawidpawliczek.app.TestcontainersConfiguration
 import com.dawidpawliczek.app.auth.JwtService
 import com.dawidpawliczek.app.auth.user.User
+import com.dawidpawliczek.app.order.adapter.inbound.dto.OrderRequest
+import com.dawidpawliczek.app.order.application.port.outbound.OrderCommandPublisher
 import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Side
 import org.junit.jupiter.api.Test
