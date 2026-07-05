@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
-record Job(PlaceOrderCommand cmd, CompletableFuture<List<MarketEvent>> result) {}
+record Job(PlaceOrderCommand cmd, long sourceOffset, CompletableFuture<List<MarketEvent>> result) {}
 
 public final class OrderService {
 
@@ -29,6 +29,7 @@ public final class OrderService {
     private final BlockingQueue<Job> queue = new ArrayBlockingQueue<>(1 << 16);
     private final Thread writerThread;
     private volatile boolean running = true;
+    private volatile long sourceWatermark = -1;
 
     public OrderService(CommandLog commandLog, MarketFeedSink marketFeedSink) {
         this.commandLog = commandLog;
@@ -38,11 +39,16 @@ public final class OrderService {
         this.writerThread.start();
     }
 
-    public CompletableFuture<List<MarketEvent>> place(PlaceOrderCommand cmd) throws InterruptedException {
+    public CompletableFuture<List<MarketEvent>> place(PlaceOrderCommand cmd, long sourceOffset)
+            throws InterruptedException {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
         CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
-        queue.put(new Job(cmd, box));
+        queue.put(new Job(cmd, sourceOffset, box));
         return box;
+    }
+
+    public long lastSourceOffset() {
+        return sourceWatermark;
     }
 
     public void close() {
@@ -62,8 +68,14 @@ public final class OrderService {
                 batch.clear();
                 batch.add(queue.take());
                 queue.drainTo(batch);
-                List<Order> orders = new ArrayList<>(1024);
+                List<Job> fresh = new ArrayList<>(batch.size());
+                List<Order> orders = new ArrayList<>(batch.size());
+                long maxOffset = sourceWatermark;
                 for (Job job : batch) {
+                    if (job.sourceOffset() <= maxOffset) {
+                        job.result().complete(List.of());
+                        continue;
+                    }
                     Order order = new Order(
                             counter.getAndIncrement(),
                             job.cmd().userId(),
@@ -71,15 +83,20 @@ public final class OrderService {
                             job.cmd().price(),
                             job.cmd().market(),
                             job.cmd().quantity());
+                    fresh.add(job);
                     orders.add(order);
-                    commandLog.append(WalCodec.encode(order));
+                    commandLog.append(WalCodec.encode(order, job.sourceOffset()));
+                    maxOffset = job.sourceOffset();
                 }
 
+                if (orders.isEmpty()) continue;
+
                 commandLog.sync();
+                sourceWatermark = maxOffset;
 
                 for (int i = 0; i < orders.size(); i++) {
                     Order order = orders.get(i);
-                    Job job = batch.get(i);
+                    Job job = fresh.get(i);
                     List<MarketEvent> events = orderBook.submit(order);
                     transactionHistory.addAll(events);
                     marketFeedSink.publish(events);
@@ -106,9 +123,10 @@ public final class OrderService {
 
     private void recover() {
         commandLog.replay(payload -> {
-            Order order = WalCodec.decodeOrder(payload);
-            transactionHistory.addAll(orderBook.submit(order));
-            counter.set(order.id() + 1);
+            var record = WalCodec.decode(payload);
+            transactionHistory.addAll(orderBook.submit(record.order()));
+            counter.set(record.order().id() + 1);
+            sourceWatermark = Math.max(sourceWatermark, record.sourceOffset());
         });
     }
 }

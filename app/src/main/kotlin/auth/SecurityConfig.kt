@@ -21,7 +21,7 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it
-                    .requestMatchers("/actuator/**", "/auth/credentials/**", "/auth/session/**", "/ws/**")
+                    .requestMatchers("/actuator/**", "/auth/credentials/**", "/auth/session/**", "/marketdata")
                     .permitAll()
                 it.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 it.anyRequest().authenticated()

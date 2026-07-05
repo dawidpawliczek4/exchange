@@ -24,5 +24,6 @@ include(":contracts")
 include(":engine")
 include(":benchmark")
 include(":matching-service")
+include(":e2e")
 
 rootProject.name = "exchange"

@@ -36,15 +36,19 @@ The codebase is deliberately layered so the pure engine never touches Kafka or S
 
 - **`:engine` (Java, `java-library`)** — the matching core, framework-free. `OrderBook` is a price-time-priority book: two `TreeMap<Long, Deque<Order>>` (bids reverse-ordered), `submit()` is `synchronized` and returns the trades produced. `OrderService` wraps it with a **single-writer** model: callers `place()` a command onto a bounded `BlockingQueue`, and one `matching-writer` thread drains batches, WAL-appends + `sync()`s every order, *then* matches and completes each caller's `CompletableFuture`. The WAL write happens before matching so the book can be rebuilt. Engine I/O is abstracted behind two ports: `CommandLog` (WAL) and `MarketFeedSink` (trade output). `engine` depends on `contracts` via `api` (not `implementation`) because `Trade`/`PlaceOrderCommand` appear in `OrderService`'s public signatures.
 
-- **`:matching-service` (Kotlin, application plugin)** — hosts the engine off Kafka. `main()` is a hand-written consume loop: poll `orders.commands`, decode with `WireCodec`, `place()` into `OrderService`, then `join()` all futures → `producer.flush()` → `consumer.commitSync()` (manual commit, idempotent producer). Wires `FileCommandLog(journal.bin)` as the `CommandLog` and `KafkaMarketFeedSink` as the `MarketFeedSink`. Touches `/tmp/alive` every 5s as a container heartbeat.
+- **`:matching-service` (Kotlin, application plugin)** — hosts the engine off Kafka. `MatchingRunner` (start/stop lifecycle, testable; `main()` is a thin wrapper) runs a hand-written consume loop: poll `orders.commands`, decode with `WireCodec`, `place(cmd, record.offset())` into `OrderService`, then `join()` all futures → `producer.flush()` → `consumer.commitSync()` (manual commit, idempotent producer). Wires `FileCommandLog(journal.bin)` as the `CommandLog` and `KafkaMarketFeedSink` as the `MarketFeedSink`. Touches `/tmp/alive` every 5s as a container heartbeat (only when a heartbeat path is configured).
 
 - **`:app` (Kotlin + Spring Boot 4)** — the gateway. `OrderController` (`POST /order`) validates and hands to `OrderCommandPublisher`, which `WireCodec`-encodes onto `orders.commands`. The market-data side (`adapter/marketData/`) consumes `orders.trades` and fans trades out over the `/marketdata` WebSocket. Entry point `App.kt`.
 
 - **`:benchmark` (Java + JMH)** — microbenchmarks for `OrderBook`; depends on `engine` + `contracts`.
 
+- **`:e2e` (Kotlin, tests only)** — full-stack test: Testcontainers Kafka + Postgres, the Spring gateway booted in-test, `MatchingRunner` in-process; register → JWT → two crossing `POST /order` → trade JSON asserted on the `/marketdata` WebSocket.
+
 ### Durability / recovery
 
-`FileCommandLog` is an append-only write-ahead log (`journal.bin`, framed by `WalCodec`). On startup `OrderService.recover()` replays the WAL, re-submitting every order to rebuild the book and the id counter *before* the writer thread starts. Under Compose the journal sits on a named volume so it survives restarts. There is currently no Kafka offset/WAL reconciliation — recovery is purely WAL-driven.
+`FileCommandLog` is an append-only write-ahead log (`journal.bin`, framed by `WalCodec`). On startup `OrderService.recover()` replays the WAL, re-submitting every order to rebuild the book, the id counter, and the source-offset watermark *before* the writer thread starts. Under Compose the journal sits on a named volume so it survives restarts.
+
+Kafka↔WAL reconciliation: every WAL record (v1: `[1B version][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]`) carries the Kafka offset of the command it came from. On (re)assignment the consumer seeks to `lastSourceOffset() + 1`, so commands that were WAL-synced but whose offset commit was lost in a crash are not re-applied; the engine additionally drops any `place()` whose offset is `<= watermark` (idempotent apply). A crash after WAL sync but before `producer.flush()` can still lose those trades from `orders.trades` (the book stays correct; recovery never republishes) — known, deliberate gap. Pre-v1 journals fail loud (`unsupported WAL record version`); wipe the journal volume (`docker compose -f devops/docker-compose.yml down -v`) when upgrading across the format change.
 
 ## Build system notes
 

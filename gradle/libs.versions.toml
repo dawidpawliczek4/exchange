@@ -35,6 +35,7 @@ springBootStarterActuator = { module = "org.springframework.boot:spring-boot-sta
 springBootTest = { module = "org.springframework.boot:spring-boot-starter-test" }
 springBootTestRest = { module = "org.springframework.boot:spring-boot-resttestclient" }
 springKafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
+springKafkaTest = { module = "org.springframework.kafka:spring-kafka-test" }
 spotlessPlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref="spotless" }
 kafkaClients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
 springBootStarterSecurity = { module = "org.springframework.boot:spring-boot-starter-security" }
@@ -44,6 +45,8 @@ postgresql = { module = "org.postgresql:postgresql" }
 springBootTestcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 testcontainersJunit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainersPostgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+testcontainersKafka = { module = "org.testcontainers:testcontainers-kafka", version.ref = "testcontainers" }
+springBootBom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
 jjwtApi = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
 jjwtImpl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
 jjwtJackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
