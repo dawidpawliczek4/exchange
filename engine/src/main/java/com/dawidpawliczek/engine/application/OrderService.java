@@ -1,11 +1,15 @@
 package com.dawidpawliczek.engine.application;
 
+import com.dawidpawliczek.contracts.CancelOrderCommand;
 import com.dawidpawliczek.contracts.MarketEvent;
+import com.dawidpawliczek.contracts.OrderCommand;
 import com.dawidpawliczek.contracts.PlaceOrderCommand;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import com.dawidpawliczek.engine.ports.CommandLog;
 import com.dawidpawliczek.engine.ports.MarketFeedSink;
+import com.dawidpawliczek.engine.wire.CancelRecord;
+import com.dawidpawliczek.engine.wire.PlaceRecord;
 import com.dawidpawliczek.engine.wire.WalCodec;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
-record Job(PlaceOrderCommand cmd, long sourceOffset, CompletableFuture<List<MarketEvent>> result) {}
+record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<List<MarketEvent>> result) {}
 
 public final class OrderService {
 
@@ -39,8 +43,7 @@ public final class OrderService {
         this.writerThread.start();
     }
 
-    public CompletableFuture<List<MarketEvent>> place(PlaceOrderCommand cmd, long sourceOffset)
-            throws InterruptedException {
+    public CompletableFuture<List<MarketEvent>> submit(OrderCommand cmd, long sourceOffset) throws InterruptedException {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
         CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
         queue.put(new Job(cmd, sourceOffset, box));
@@ -65,39 +68,53 @@ public final class OrderService {
         List<Job> batch = new ArrayList<>(1024);
         while (running) {
             try {
+                long maxOffset = sourceWatermark;
                 batch.clear();
                 batch.add(queue.take());
                 queue.drainTo(batch);
-                List<Job> fresh = new ArrayList<>(batch.size());
-                List<Order> orders = new ArrayList<>(batch.size());
-                long maxOffset = sourceWatermark;
+                List<Job> applyJobs = new ArrayList<>(batch.size());
+                List<Order> applyOrders = new ArrayList<>(batch.size());
+
                 for (Job job : batch) {
                     if (job.sourceOffset() <= maxOffset) {
                         job.result().complete(List.of());
                         continue;
                     }
-                    Order order = new Order(
-                            counter.getAndIncrement(),
-                            job.cmd().userId(),
-                            job.cmd().side(),
-                            job.cmd().price(),
-                            job.cmd().market(),
-                            job.cmd().quantity());
-                    fresh.add(job);
-                    orders.add(order);
-                    commandLog.append(WalCodec.encode(order, job.sourceOffset()));
+                    switch (job.cmd()) {
+                        case CancelOrderCommand c -> {
+                            commandLog.append(WalCodec.encodeCancel(c.id(), c.userId(), job.sourceOffset()));
+                            applyJobs.add(job);
+                            applyOrders.add(null);
+                        }
+                        case PlaceOrderCommand c -> {
+                            Order order = new Order(
+                                    counter.getAndIncrement(),
+                                    c.userId(),
+                                    c.side(),
+                                    c.price(),
+                                    c.market(),
+                                    c.quantity());
+                            commandLog.append(WalCodec.encode(order, job.sourceOffset()));
+                            applyJobs.add(job);
+                            applyOrders.add(order);
+                        }
+                    }
                     maxOffset = job.sourceOffset();
                 }
-
-                if (orders.isEmpty()) continue;
 
                 commandLog.sync();
                 sourceWatermark = maxOffset;
 
-                for (int i = 0; i < orders.size(); i++) {
-                    Order order = orders.get(i);
-                    Job job = fresh.get(i);
-                    List<MarketEvent> events = orderBook.submit(order);
+                for (int i = 0; i < applyJobs.size(); i++) {
+                    Job job = applyJobs.get(i);
+                    Order order = applyOrders.get(i);
+                    List<MarketEvent> events;
+                    if (order == null) {
+                        CancelOrderCommand c = (CancelOrderCommand) job.cmd();
+                        events = List.of(orderBook.cancel(c.id(), c.userId()));
+                    } else {
+                        events = orderBook.submit(order);
+                    }
                     transactionHistory.addAll(events);
                     marketFeedSink.publish(events);
                     job.result().complete(events);
@@ -124,8 +141,15 @@ public final class OrderService {
     private void recover() {
         commandLog.replay(payload -> {
             var record = WalCodec.decode(payload);
-            transactionHistory.addAll(orderBook.submit(record.order()));
-            counter.set(record.order().id() + 1);
+            switch (record) {
+                case PlaceRecord p -> {
+                    transactionHistory.addAll(orderBook.submit(p.order()));
+                    counter.set(p.order().id() + 1);
+                }
+                case CancelRecord c -> {
+                    transactionHistory.add(orderBook.cancel(c.orderId(), c.userId()));
+                }
+            }
             sourceWatermark = Math.max(sourceWatermark, record.sourceOffset());
         });
     }

@@ -8,13 +8,16 @@ public final class WalCodec {
 
     private WalCodec() {}
 
-    // version(1) + sourceOffset(8) + id(8) + userId(8) + side(1) + price(8) + market(1) + quantity(8)
-    private static final byte VERSION = 1;
-    private static final int RECORD_SIZE = 1 + 8 + 8 + 8 + 1 + 8 + 1 + 8;
+    // cancel (tag 0, 25B): [1B tag][8B sourceOffset][8B orderId][8B userId]
+    // place  (tag 1, 43B): [1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]
+    private static final byte TAG_CANCEL = 0;
+    private static final byte TAG_PLACE = 1;
+    private static final int CANCEL_SIZE = 1 + 8 + 8 + 8;
+    private static final int PLACE_SIZE = 1 + 8 + 8 + 8 + 1 + 8 + 1 + 8;
 
     public static byte[] encode(Order o, long sourceOffset) {
-        ByteBuffer b = ByteBuffer.allocate(RECORD_SIZE);
-        b.put(VERSION);
+        ByteBuffer b = ByteBuffer.allocate(PLACE_SIZE);
+        b.put(TAG_PLACE);
         b.putLong(sourceOffset);
         b.putLong(o.id());
         b.putLong(o.userId());
@@ -25,19 +28,36 @@ public final class WalCodec {
         return b.array();
     }
 
+    public static byte[] encodeCancel(long orderId, long userId, long sourceOffset) {
+        ByteBuffer b = ByteBuffer.allocate(CANCEL_SIZE);
+        b.put(TAG_CANCEL);
+        b.putLong(sourceOffset);
+        b.putLong(orderId);
+        b.putLong(userId);
+        return b.array();
+    }
+
     public static WalRecord decode(byte[] payload) {
         ByteBuffer b = ByteBuffer.wrap(payload);
-        byte version = b.get();
-        if (version != VERSION) {
-            throw new IllegalArgumentException("unsupported WAL record version: " + version);
-        }
-        long sourceOffset = b.getLong();
-        long id = b.getLong();
-        long userId = b.getLong();
-        Side side = b.get() == 0 ? Side.SELL : Side.BUY;
-        long price = b.getLong();
-        boolean market = b.get() == 1;
-        long quantity = b.getLong();
-        return new WalRecord(new Order(id, userId, side, price, market, quantity), sourceOffset);
+        byte tag = b.get();
+        return switch (tag) {
+            case TAG_PLACE -> {
+                long sourceOffset = b.getLong();
+                long id = b.getLong();
+                long userId = b.getLong();
+                Side side = b.get() == 0 ? Side.SELL : Side.BUY;
+                long price = b.getLong();
+                boolean market = b.get() == 1;
+                long quantity = b.getLong();
+                yield new PlaceRecord(new Order(id, userId, side, price, market, quantity), sourceOffset);
+            }
+            case TAG_CANCEL -> {
+                long sourceOffset = b.getLong();
+                long orderId = b.getLong();
+                long userId = b.getLong();
+                yield new CancelRecord(orderId, userId, sourceOffset);
+            }
+            default -> throw new IllegalArgumentException("unsupported WAL record kind: " + tag);
+        };
     }
 }

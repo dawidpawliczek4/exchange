@@ -5,6 +5,7 @@ import com.dawidpawliczek.app.auth.JwtService
 import com.dawidpawliczek.app.auth.user.User
 import com.dawidpawliczek.app.order.adapter.inbound.dto.OrderRequest
 import com.dawidpawliczek.app.order.application.port.outbound.OrderCommandPublisher
+import com.dawidpawliczek.contracts.CancelOrderCommand
 import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Side
 import org.junit.jupiter.api.Test
@@ -66,6 +67,31 @@ class OrderControllerTest {
             .post()
             .uri("/order")
             .body(OrderRequest(Side.BUY, 100, false, 1))
+            .exchange()
+            .expectStatus()
+            .isForbidden()
+
+        verifyNoInteractions(publisher)
+    }
+
+    @Test
+    fun publishesCancelForAuthenticatedUserAndAccepts() {
+        client
+            .delete()
+            .uri("/order/7")
+            .header("Authorization", "Bearer ${tokenFor(42L)}")
+            .exchange()
+            .expectStatus()
+            .isAccepted()
+
+        verify(publisher).publish(CancelOrderCommand(42, 7))
+    }
+
+    @Test
+    fun rejectsUnauthenticatedCancel() {
+        client
+            .delete()
+            .uri("/order/7")
             .exchange()
             .expectStatus()
             .isForbidden()

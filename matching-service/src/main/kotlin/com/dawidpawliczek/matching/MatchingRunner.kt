@@ -97,7 +97,7 @@ class MatchingRunner(
 
                 val futures = ArrayList<CompletableFuture<List<MarketEvent>>>(records.count())
                 for (record in records) {
-                    futures.add(orderService.place(WireCodec.decodeCommand(record.value()), record.offset()))
+                    futures.add(orderService.submit(WireCodec.decodeCommand(record.value()), record.offset()))
                 }
 
                 CompletableFuture.allOf(*futures.toTypedArray()).join()

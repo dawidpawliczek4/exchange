@@ -11,6 +11,7 @@ dependencies {
     testImplementation(libs.springBootTest)
     testImplementation(libs.springBootTestRest)
     testImplementation(libs.springBootStarterWebsocket)
+    testImplementation(libs.springBootStarterDataJpa)
     testImplementation(libs.springKafka)
     testImplementation(libs.springKafkaTest)
     testImplementation(libs.springBootTestcontainers)

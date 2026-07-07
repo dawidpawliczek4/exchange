@@ -2,11 +2,17 @@ package com.dawidpawliczek.e2e
 
 import com.dawidpawliczek.app.ExchangeApplication
 import com.dawidpawliczek.app.auth.AuthTokens
+import com.dawidpawliczek.app.auth.user.UserRepository
+import com.dawidpawliczek.contracts.CancelEvent
+import com.dawidpawliczek.contracts.CancelStatus
+import com.dawidpawliczek.contracts.TradeEvent
 import com.dawidpawliczek.matching.MatchingRunner
-import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertNull
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
@@ -28,6 +34,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.kafka.KafkaContainer
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
+import tools.jackson.databind.ObjectMapper
 import java.nio.file.Path
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
@@ -63,11 +70,22 @@ class TradeFlowE2eTest {
     @Autowired
     lateinit var listenerRegistry: KafkaListenerEndpointRegistry
 
+    @Autowired
+    lateinit var mapper: ObjectMapper
+
+    @Autowired
+    lateinit var userRepository: UserRepository
+
     @LocalServerPort
     var port: Int = 0
 
     @TempDir
     lateinit var dir: Path
+
+    @BeforeEach
+    fun resetDatabase() {
+        userRepository.deleteAll()
+    }
 
     @Test
     fun tradeFlowsFromOrderToWebSocket() {
@@ -75,6 +93,7 @@ class TradeFlowE2eTest {
             runner.start()
 
             val tokens = register()
+            val userId = registeredUserId()
             val messages = LinkedBlockingQueue<String>()
             val session =
                 StandardWebSocketClient()
@@ -91,13 +110,51 @@ class TradeFlowE2eTest {
             val json = messages.poll(30, TimeUnit.SECONDS)
             assertNotNull(json, "no trade arrived on /marketdata within 30s")
 
-            val trade = JsonPath.parse(json)
-            assertEquals(100, trade.read("$.trade.price"))
-            assertEquals(5, trade.read("$.trade.quantity"))
-            assertEquals(1, trade.read("$.trade.makerUserId"))
-            assertEquals(1, trade.read("$.trade.takerUserId"))
-            assertNotNull(trade.read<Any>("$.seq"))
-            assertNotNull(trade.read<Any>("$.timestamp"))
+            val event = mapper.readValue(json, TradeEvent::class.java)
+            assertEquals(100L, event.trade().price())
+            assertEquals(5L, event.trade().quantity())
+            assertEquals(userId, event.trade().makerUserId())
+            assertEquals(userId, event.trade().takerUserId())
+            assertTrue(event.seq() > 0)
+            assertTrue(event.timestamp() > 0)
+
+            session.close()
+        }
+    }
+
+    @Test
+    fun cancelsOrder() {
+        MatchingRunner(kafka.bootstrapServers, dir.resolve("journal.bin")).use { runner ->
+            runner.start()
+
+            val tokens = register()
+            val userId = registeredUserId()
+
+            val messages = LinkedBlockingQueue<String>()
+            val session =
+                StandardWebSocketClient()
+                    .execute(collector(messages), "ws://localhost:$port/marketdata")
+                    .get(10, TimeUnit.SECONDS)
+
+            for (container in listenerRegistry.listenerContainers) {
+                ContainerTestUtils.waitForAssignment(container, 1)
+            }
+
+            postOrder(tokens.accessToken, "SELL", 100, 5)
+            cancelOrder(tokens.accessToken, 0)
+
+            val json = messages.poll(30, TimeUnit.SECONDS)
+            assertNotNull(json, "no cancel event arrived on /marketdata within 30s")
+
+            val event = mapper.readValue(json, CancelEvent::class.java)
+            assertEquals(CancelStatus.CANCELED, event.status())
+            assertEquals(0L, event.orderId())
+            assertEquals(userId, event.userId())
+            assertTrue(event.seq() > 0)
+            assertTrue(event.timestamp() > 0)
+
+            postOrder(tokens.accessToken, "BUY", 100, 5)
+            assertNull(messages.poll(2, TimeUnit.SECONDS), "cancelled order must not trade")
 
             session.close()
         }
@@ -115,6 +172,21 @@ class TradeFlowE2eTest {
             .expectBody(AuthTokens::class.java)
             .returnResult()
             .responseBody!!
+
+    private fun registeredUserId(): Long = userRepository.findAll().single().id
+
+    private fun cancelOrder(
+        token: String,
+        id: Long,
+    ) {
+        client
+            .delete()
+            .uri("/order/$id")
+            .header("Authorization", "Bearer $token")
+            .exchange()
+            .expectStatus()
+            .isAccepted()
+    }
 
     private fun postOrder(
         token: String,

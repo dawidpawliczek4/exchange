@@ -1,6 +1,7 @@
 package com.dawidpawliczek.engine.wire;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.dawidpawliczek.contracts.Side;
@@ -15,7 +16,7 @@ class WalCodecTest {
         var encoded = WalCodec.encode(order, 7_000_000_123L);
         assertEquals(43, encoded.length);
 
-        var decoded = WalCodec.decode(encoded);
+        var decoded = assertInstanceOf(PlaceRecord.class, WalCodec.decode(encoded));
         assertEquals(7_000_000_123L, decoded.sourceOffset());
         assertEquals(order.id(), decoded.order().id());
         assertEquals(order.userId(), decoded.order().userId());
@@ -26,8 +27,19 @@ class WalCodecTest {
     }
 
     @Test
-    void rejectsUnknownVersion() {
-        var stale = new byte[43];
+    void cancelRoundTrip() {
+        var encoded = WalCodec.encodeCancel(99, 1, 7_000_000_123L);
+        assertEquals(25, encoded.length);
+
+        var decoded = assertInstanceOf(CancelRecord.class, WalCodec.decode(encoded));
+        assertEquals(99, decoded.orderId());
+        assertEquals(1, decoded.userId());
+        assertEquals(7_000_000_123L, decoded.sourceOffset());
+    }
+
+    @Test
+    void rejectsUnknownKind() {
+        var stale = new byte[] {3};
         assertThrows(IllegalArgumentException.class, () -> WalCodec.decode(stale));
     }
 }

@@ -1,7 +1,10 @@
 package com.dawidpawliczek.engine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.dawidpawliczek.contracts.CancelEvent;
+import com.dawidpawliczek.contracts.CancelStatus;
 import com.dawidpawliczek.contracts.Side;
 import com.dawidpawliczek.contracts.Trade;
 import com.dawidpawliczek.contracts.TradeEvent;
@@ -110,5 +113,54 @@ public class OrderBookTest {
         var trades = ob.submit(bid);
 
         assertEquals(List.of(new TradeEvent(1, 0, new Trade(1, 42, 2, 42, 100, 3))), trades);
+    }
+
+    @Test
+    void cancelRemovesRestingSell() {
+        var ob = new OrderBook(() -> 0L);
+        ob.submit(new Order(1, 10, Side.SELL, 100, false, 10));
+
+        assertEquals(new CancelEvent(1, 0, 10, 1, CancelStatus.CANCELED), ob.cancel(1, 10));
+
+        assertTrue(ob.submit(new Order(2, 30, Side.BUY, 100, false, 10)).isEmpty());
+    }
+
+    @Test
+    void cancelRemovesRestingBid() {
+        var ob = new OrderBook(() -> 0L);
+        ob.submit(new Order(1, 10, Side.BUY, 100, false, 10));
+
+        assertEquals(new CancelEvent(1, 0, 10, 1, CancelStatus.CANCELED), ob.cancel(1, 10));
+
+        assertTrue(ob.submit(new Order(2, 30, Side.SELL, 100, false, 10)).isEmpty());
+    }
+
+    @Test
+    void cancelUnknownOrderIsRejected() {
+        var ob = new OrderBook(() -> 0L);
+
+        assertEquals(new CancelEvent(1, 0, 10, 999, CancelStatus.REJECTED), ob.cancel(999, 10));
+    }
+
+    @Test
+    void cancelByNonOwnerIsRejectedAndOrderStays() {
+        var ob = new OrderBook(() -> 0L);
+        ob.submit(new Order(1, 10, Side.SELL, 100, false, 10));
+
+        assertEquals(new CancelEvent(1, 0, 99, 1, CancelStatus.REJECTED), ob.cancel(1, 99));
+
+        var trades = ob.submit(new Order(2, 30, Side.BUY, 100, false, 10));
+        assertEquals(List.of(new TradeEvent(2, 0, new Trade(1, 10, 2, 30, 100, 10))), trades);
+    }
+
+    @Test
+    void cancelRemovesRemainderAfterPartialFill() {
+        var ob = new OrderBook(() -> 0L);
+        ob.submit(new Order(1, 10, Side.SELL, 100, false, 10));
+        ob.submit(new Order(2, 30, Side.BUY, 100, false, 4));
+
+        assertEquals(new CancelEvent(2, 0, 10, 1, CancelStatus.CANCELED), ob.cancel(1, 10));
+
+        assertTrue(ob.submit(new Order(3, 40, Side.BUY, 100, false, 6)).isEmpty());
     }
 }

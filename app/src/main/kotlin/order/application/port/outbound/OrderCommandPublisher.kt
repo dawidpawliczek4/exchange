@@ -1,7 +1,7 @@
 package com.dawidpawliczek.app.order.application.port.outbound
 
-import com.dawidpawliczek.contracts.PlaceOrderCommand
+import com.dawidpawliczek.contracts.OrderCommand
 
 interface OrderCommandPublisher {
-    fun publish(command: PlaceOrderCommand)
+    fun publish(command: OrderCommand)
 }

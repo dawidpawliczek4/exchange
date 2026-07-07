@@ -1,9 +1,6 @@
 package com.dawidpawliczek.engine.domain;
 
-import com.dawidpawliczek.contracts.MarketEvent;
-import com.dawidpawliczek.contracts.Side;
-import com.dawidpawliczek.contracts.Trade;
-import com.dawidpawliczek.contracts.TradeEvent;
+import com.dawidpawliczek.contracts.*;
 import java.util.*;
 import java.util.function.LongSupplier;
 
@@ -21,6 +18,28 @@ public final class OrderBook {
 
     public OrderBook(LongSupplier clock) {
         this.clock = clock;
+    }
+
+    public synchronized MarketEvent cancel(long orderId, long userId) {
+        boolean removed = cancelIn(orderId, userId, bids) || cancelIn(orderId, userId, asks);
+        CancelStatus status = removed ? CancelStatus.CANCELED : CancelStatus.REJECTED;
+        return new CancelEvent(++seq, clock.getAsLong(), userId, orderId, status);
+    }
+
+    private boolean cancelIn(long orderId, long userId, NavigableMap<Long, Deque<Order>> side) {
+        for (var e : side.entrySet()) {
+            var orders = e.getValue();
+            var it = orders.iterator();
+            while (it.hasNext()) {
+                var o = it.next();
+                if (o.id() == orderId && o.userId() == userId) {
+                    it.remove();
+                    if (orders.isEmpty()) side.remove(e.getKey());
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public synchronized List<MarketEvent> submit(Order incoming) {
