@@ -18,6 +18,9 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafkadata:/var/lib/kafka/data
     healthcheck:
       test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 5s
@@ -80,3 +83,4 @@ services:
 volumes:
   journal:
   pgdata:
+  kafkadata:

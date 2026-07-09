@@ -28,6 +28,24 @@ compose-up:
 compose-down:
     docker compose -f devops/docker-compose.yml down
 
+# Stop the stack and wipe all volumes (journal, pgdata, kafkadata) — fresh state on next up
+compose-reset:
+    docker compose -f devops/docker-compose.yml down -v
+
+# Register a demo user and place two crossing orders (needs jq; run `just compose-up` first)
+demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    token=$(curl -sX POST localhost:8080/auth/credentials/register \
+      -H 'Content-Type: application/json' \
+      -d "{\"email\":\"demo+$RANDOM@example.com\",\"password\":\"password123\"}" | jq -r .accessToken)
+    for side in BUY SELL; do
+      curl -sX POST localhost:8080/order -H "Authorization: Bearer $token" \
+        -H 'Content-Type: application/json' \
+        -d "{\"side\":\"$side\",\"price\":100,\"market\":false,\"quantity\":5}"
+    done
+    echo "posted two crossing orders — watch: websocat ws://localhost:8080/marketdata"
+
 # --- Kubernetes (kind + Strimzi) ---------------------------------------------
 
 # Full bootstrap from scratch: kind + Strimzi + Kafka + gateway + matching

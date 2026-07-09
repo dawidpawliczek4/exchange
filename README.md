@@ -33,17 +33,22 @@ Brings up Kafka, the matching service, and the gateway (requires Docker):
 docker compose -f devops/docker-compose.yml up -d --build
 ```
 
-Then drive it:
+Then drive it — or run `just demo` for the whole flow in one command (needs `jq` and `websocat`):
 
 ```bash
 # Watch trades over WebSocket
 websocat ws://localhost:8080/marketdata
 
-# POST two crossing orders
-curl -X POST localhost:8080/order -H 'Content-Type: application/json' \
-  -d '{"userId":1,"side":"BUY","price":100,"market":false,"quantity":5}'
-curl -X POST localhost:8080/order -H 'Content-Type: application/json' \
-  -d '{"userId":2,"side":"SELL","price":100,"market":false,"quantity":5}'
+# Register a user → { "accessToken": "...", "refreshToken": "..." }
+TOKEN=$(curl -sX POST localhost:8080/auth/credentials/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"trader@example.com","password":"password123"}' | jq -r .accessToken)
+
+# POST two crossing orders as that user (self-trade; register a second user for real maker/taker)
+curl -X POST localhost:8080/order -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"side":"BUY","price":100,"market":false,"quantity":5}'
+curl -X POST localhost:8080/order -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"side":"SELL","price":100,"market":false,"quantity":5}'
   
 # → the trade shows up in the websocat
 
