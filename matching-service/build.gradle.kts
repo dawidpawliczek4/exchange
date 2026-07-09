@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":engine"))
     implementation(project(":contracts"))
     implementation(libs.kafkaClients)
+    implementation(libs.micrometerPrometheus)
     testImplementation(libs.junitJupiter)
     testImplementation(libs.testcontainersJunit)
     testImplementation(libs.testcontainersKafka)

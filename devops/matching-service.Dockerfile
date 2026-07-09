@@ -9,6 +9,7 @@ COPY engine/build.gradle.kts engine/
 COPY app/build.gradle.kts app/
 COPY matching-service/build.gradle.kts matching-service/
 COPY benchmark/build.gradle.kts benchmark/
+COPY e2e/build.gradle.kts e2e/
 RUN ./gradlew --no-daemon :matching-service:dependencies
 
 COPY contracts contracts

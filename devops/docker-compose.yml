@@ -30,6 +30,8 @@ services:
       context: ..
       dockerfile: devops/matching-service.Dockerfile
     container_name: matching
+    ports:
+      - "9400:9400"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     volumes:

@@ -43,7 +43,8 @@ public final class OrderService {
         this.writerThread.start();
     }
 
-    public CompletableFuture<List<MarketEvent>> submit(OrderCommand cmd, long sourceOffset) throws InterruptedException {
+    public CompletableFuture<List<MarketEvent>> submit(OrderCommand cmd, long sourceOffset)
+            throws InterruptedException {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
         CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
         queue.put(new Job(cmd, sourceOffset, box));
