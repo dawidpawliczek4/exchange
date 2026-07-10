@@ -7,6 +7,9 @@ spec:
   clusterIP: None
   selector:
     app: matching
+  ports:
+    - name: metrics
+      port: 9400
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -28,6 +31,9 @@ spec:
         - name: matching
           image: exchange-matching:dev
           imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9400
+              name: metrics
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: exchange-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092

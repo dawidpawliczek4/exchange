@@ -48,8 +48,8 @@ demo:
 
 # --- Kubernetes (kind + Strimzi) ---------------------------------------------
 
-# Full bootstrap from scratch: kind + Strimzi + Kafka + gateway + matching
-up: cluster namespaces postgres strimzi kafka images load apps
+# Full bootstrap from scratch: kind + Strimzi + Kafka + gateway + matching + monitoring
+up: cluster namespaces postgres strimzi kafka images load apps monitoring
 
 # Create the kind cluster
 cluster:
@@ -93,10 +93,20 @@ apps:
     kubectl rollout status deploy/gateway -n exchange --timeout=180s
     kubectl rollout status statefulset/matching -n exchange --timeout=180s
 
+# Deploy Prometheus + Grafana (dashboard ConfigMap generated from devops/grafana/dashboards/)
+monitoring:
+    kubectl apply -f devops/k8s/namespaces.yaml
+    kubectl create configmap grafana-dashboards -n monitoring \
+      --from-file=devops/grafana/dashboards/ \
+      --dry-run=client -o yaml | kubectl apply -f -
+    kubectl apply -f devops/k8s/prometheus.yaml -f devops/k8s/grafana.yaml
+    kubectl rollout status deploy/prometheus deploy/grafana -n monitoring --timeout=180s
+
 # Show cluster state (Kafka layer + apps)
 status:
     kubectl get kafka,kafkanodepool,kafkatopic,pods -n kafka
     kubectl get pods,statefulset,deploy -n exchange
+    kubectl get pods,deploy -n monitoring
 
 # Delete the kind cluster (everything goes)
 down:
