@@ -49,11 +49,20 @@ demo:
 # --- Kubernetes (kind + Strimzi) ---------------------------------------------
 
 # Full bootstrap from scratch: kind + Strimzi + Kafka + gateway + matching
-up: cluster strimzi kafka images load apps
+up: cluster namespaces postgres strimzi kafka images load apps
 
 # Create the kind cluster
 cluster:
     kind create cluster --name {{cluster}}
+
+# Create namespaces used by apps
+namespaces:
+    kubectl apply -f devops/k8s/namespaces.yaml
+
+# Create postgres db
+postgres:
+    kubectl apply -f devops/k8s/namespaces.yaml
+    kubectl apply -f devops/k8s/postgres.yaml
 
 # Install the Strimzi operator (pinned) into the kafka namespace
 strimzi:
