@@ -76,6 +76,13 @@ docker compose -f devops/docker-compose.yml up -d kafka
 ./gradlew :app:bootRun
 ```
 
+### Observability
+
+The matching service exposes Micrometer/Prometheus metrics on `:9400/metrics` (order throughput, JVM,
+Kafka). Compose adds Prometheus (`localhost:9090`) and Grafana (`localhost:3000`, no login) with an
+orders/s dashboard provisioned from `devops/` — nothing to click. Post orders with `just demo` and
+watch the curve.
+
 ### Configuration
 
 The matching service persists every order to a write-ahead log (`journal.bin`) and rebuilds its book
@@ -91,5 +98,5 @@ Kafka bootstrap defaults to `localhost:9092`; Compose wires the services to the 
 ---
 ## Tech stack
 
-Java 25 · Kotlin · Spring Boot 4 · Apache Kafka · Gradle (multi-module, version catalog, convention
-plugins) · JMH · JUnit 5.
+Java 25 · Kotlin · Spring Boot 4 · Apache Kafka · Micrometer + Prometheus + Grafana · Gradle
+(multi-module, version catalog, convention plugins) · JMH · JUnit 5.

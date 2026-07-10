@@ -63,6 +63,32 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    depends_on:
+      - matching
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+
   postgres:
     image: postgres:17
     container_name: postgres
@@ -84,3 +110,5 @@ volumes:
   journal:
   pgdata:
   kafkadata:
+  promdata:
+  grafanadata:
