@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: exchange-gateway
+    newName: europe-central2-docker.pkg.dev/exchange-dawid-2026/exchange/gateway
+    newTag: v1
+  - name: exchange-matching
+    newName: europe-central2-docker.pkg.dev/exchange-dawid-2026/exchange/matching
+    newTag: v1
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: gateway
+        namespace: exchange
+      spec:
+        type: LoadBalancer
+    target:
+      kind: Service
+      name: gateway
+      namespace: exchange

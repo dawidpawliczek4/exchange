@@ -1,5 +1,7 @@
 strimzi_version := "1.1.0"
 cluster := "exchange"
+gcp_registry := "europe-central2-docker.pkg.dev/exchange-dawid-2026/exchange"
+gcp_tag := "v1"
 
 default:
     @just --list
@@ -57,16 +59,16 @@ cluster:
 
 # Create namespaces used by apps
 namespaces:
-    kubectl apply -f devops/k8s/namespaces.yaml
+    kubectl apply -f devops/k8s/base/namespaces.yaml
 
 # Create postgres db
 postgres:
-    kubectl apply -f devops/k8s/namespaces.yaml
-    kubectl apply -f devops/k8s/postgres.yaml
+    kubectl apply -f devops/k8s/base/namespaces.yaml
+    kubectl apply -f devops/k8s/base/postgres.yaml
 
 # Install the Strimzi operator (pinned) into the kafka namespace
 strimzi:
-    kubectl apply -f devops/k8s/namespaces.yaml
+    kubectl apply -f devops/k8s/base/namespaces.yaml
     curl -sL https://github.com/strimzi/strimzi-kafka-operator/releases/download/{{strimzi_version}}/strimzi-cluster-operator-{{strimzi_version}}.yaml \
       | sed 's/namespace: .*/namespace: kafka/' \
       | kubectl apply -n kafka -f -
@@ -74,7 +76,7 @@ strimzi:
 
 # Bring up the Kafka cluster
 kafka:
-    kubectl apply -f devops/k8s/kafka.yaml
+    kubectl apply -f devops/k8s/base/kafka.yaml
     kubectl wait kafka/exchange-kafka -n kafka --for=condition=Ready --timeout=300s
 
 # Build both service images
@@ -88,18 +90,18 @@ load:
 
 # Deploy gateway + matching and wait for them
 apps:
-    kubectl apply -f devops/k8s/namespaces.yaml
-    kubectl apply -f devops/k8s/gateway.yaml -f devops/k8s/matching.yaml
+    kubectl apply -f devops/k8s/base/namespaces.yaml
+    kubectl apply -f devops/k8s/base/gateway.yaml -f devops/k8s/base/matching.yaml
     kubectl rollout status deploy/gateway -n exchange --timeout=180s
     kubectl rollout status statefulset/matching -n exchange --timeout=180s
 
 # Deploy Prometheus + Grafana (dashboard ConfigMap generated from devops/grafana/dashboards/)
 monitoring:
-    kubectl apply -f devops/k8s/namespaces.yaml
+    kubectl apply -f devops/k8s/base/namespaces.yaml
     kubectl create configmap grafana-dashboards -n monitoring \
       --from-file=devops/grafana/dashboards/ \
       --dry-run=client -o yaml | kubectl apply -f -
-    kubectl apply -f devops/k8s/prometheus.yaml -f devops/k8s/grafana.yaml
+    kubectl apply -f devops/k8s/base/prometheus.yaml -f devops/k8s/base/grafana.yaml
     kubectl rollout status deploy/prometheus deploy/grafana -n monitoring --timeout=180s
 
 # Show cluster state (Kafka layer + apps)
@@ -111,3 +113,31 @@ status:
 # Delete the kind cluster (everything goes)
 down:
     kind delete cluster --name {{cluster}}
+
+# --- GCP (GKE + Artifact Registry) --------------------------------------------
+# Assumes the GKE cluster exists and kubectl points at it (gcloud container clusters get-credentials ...)
+
+_gcp-context:
+    @kubectl config current-context | grep -q '^gke_' || { echo "current kubectl context is not GKE — run: gcloud container clusters get-credentials <cluster> --region <region>"; exit 1; }
+
+# Build both images for GKE (linux/amd64), tagged for Artifact Registry
+gcp-build:
+    docker build --platform linux/amd64 -f devops/app.Dockerfile -t {{gcp_registry}}/gateway:{{gcp_tag}} .
+    docker build --platform linux/amd64 -f devops/matching-service.Dockerfile -t {{gcp_registry}}/matching:{{gcp_tag}} .
+
+# Build and push both images to Artifact Registry
+gcp-push: gcp-build
+    docker push {{gcp_registry}}/gateway:{{gcp_tag}}
+    docker push {{gcp_registry}}/matching:{{gcp_tag}}
+
+# Deploy everything to GKE: Strimzi + gcp overlay (Kafka, topics, apps, monitoring)
+gcp-up: _gcp-context strimzi
+    kubectl create configmap grafana-dashboards -n monitoring \
+      --from-file=devops/grafana/dashboards/ \
+      --dry-run=client -o yaml | kubectl apply -f -
+    kubectl apply -k devops/k8s/overlays/gcp
+    kubectl wait kafka/exchange-kafka -n kafka --for=condition=Ready --timeout=300s
+    kubectl rollout status deploy/gateway -n exchange --timeout=300s
+    kubectl rollout status statefulset/matching -n exchange --timeout=300s
+    kubectl rollout status deploy/prometheus deploy/grafana -n monitoring --timeout=180s
+    kubectl get svc gateway -n exchange
