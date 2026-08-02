@@ -1,0 +1,29 @@
+# benchmark: OrderBookBenchmark.matchBatch
+# question: how does OrderBook throughput degrade as the book widens?
+# date: 2026-07-31
+# git_commit: ead71a4
+# git_clean: false (benchmark/ sources modified — spread parameterisation not yet committed)
+#
+# jmh_version: 1.37
+# jdk: 25.0.2, OpenJDK 64-Bit Server VM, 25.0.2+10-LTS (Temurin, aarch64)
+# vm_options: -Xms2g -Xmx2g -XX:+AlwaysPreTouch
+# mode: Throughput
+# forks: 10
+# warmup: 10 iterations x 1s
+# measurement: 20 iterations x 1s
+# batch: 50000 orders per invocation
+# workload: uniform price in [10000-spread, 10000+spread], side fair coin, qty 1..10, limit orders only, seed 42
+#
+# machine: Apple M4 Pro, 14 cores, 24 GB RAM
+# os: macOS 27.0
+# WARNING: measured on a laptop. Thermal throttling and background load are NOT controlled.
+# Treat as exploratory. Final thesis numbers must be re-collected on a quiet, fixed-clock machine.
+#
+# price_levels = 2*spread + 1
+# error = half-width of the 99.9% confidence interval, as reported by JMH
+#
+spread,price_levels,ops_per_s,error_ops_per_s,rel_error_pct,ns_per_op,rel_throughput_pct,samples
+10,21,20598934.675,211879.503,1.029,48.546,100.000,200
+100,201,15953861.117,244398.415,1.532,62.681,77.450,200
+1000,2001,12053757.374,45572.217,0.378,82.962,58.516,200
+10000,20001,9353060.126,47675.852,0.510,106.917,45.406,200

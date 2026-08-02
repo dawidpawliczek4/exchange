@@ -11,14 +11,14 @@ public final class Workload {
     /**
      * @param n    number of orders to generate
      * @param seed RNG seed (fix it for reproducibility)
+     * @param spread prices land in [mid-spread, mid+spread]
      * @return deterministic array of place-order commands
      */
-    public static PlaceOrderCommand[] generate(int n, long seed) {
+    public static PlaceOrderCommand[] generate(int n, int spread, long seed) {
         Random rnd = new Random(seed);
         PlaceOrderCommand[] cmds = new PlaceOrderCommand[n];
 
         long mid = 10_000; // price level orders cluster around
-        int spread = 10; // prices land in [mid-spread, mid+spread]
 
         for (int i = 0; i < n; i++) {
             Side side = rnd.nextBoolean() ? Side.BUY : Side.SELL;

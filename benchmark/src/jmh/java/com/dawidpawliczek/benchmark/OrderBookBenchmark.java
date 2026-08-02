@@ -4,25 +4,15 @@ import com.dawidpawliczek.contracts.PlaceOrderCommand;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import java.util.concurrent.TimeUnit;
-import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.BenchmarkMode;
-import org.openjdk.jmh.annotations.Fork;
-import org.openjdk.jmh.annotations.Level;
-import org.openjdk.jmh.annotations.Measurement;
-import org.openjdk.jmh.annotations.Mode;
-import org.openjdk.jmh.annotations.OperationsPerInvocation;
-import org.openjdk.jmh.annotations.OutputTimeUnit;
-import org.openjdk.jmh.annotations.Scope;
-import org.openjdk.jmh.annotations.Setup;
-import org.openjdk.jmh.annotations.State;
-import org.openjdk.jmh.annotations.Warmup;
+
+import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
-@BenchmarkMode({Mode.Throughput, Mode.AverageTime})
-@OutputTimeUnit(TimeUnit.MICROSECONDS)
-@Warmup(iterations = 3, time = 1)
-@Measurement(iterations = 5, time = 1)
-@Fork(1)
+@BenchmarkMode({Mode.Throughput})
+@OutputTimeUnit(TimeUnit.SECONDS)
+@Warmup(iterations = 10, time = 1)
+@Measurement(iterations = 20, time = 1)
+@Fork(value = 10, jvmArgs = {"-Xms2g", "-Xmx2g", "-XX:+AlwaysPreTouch"})
 @State(Scope.Thread)
 public class OrderBookBenchmark {
 
@@ -32,9 +22,12 @@ public class OrderBookBenchmark {
     private OrderBook book;
     private long idSeq;
 
+    @Param({"10", "100", "1000", "10000"})
+    int spread;
+
     @Setup(Level.Trial)
     public void genWorkload() {
-        workload = Workload.generate(BATCH, 42L);
+        workload = Workload.generate(BATCH, spread, 42L);
     }
 
     @Setup(Level.Invocation)
