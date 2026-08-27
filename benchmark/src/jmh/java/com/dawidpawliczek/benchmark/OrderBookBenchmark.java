@@ -4,7 +4,6 @@ import com.dawidpawliczek.contracts.PlaceOrderCommand;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import java.util.concurrent.TimeUnit;
-
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
@@ -12,7 +11,9 @@ import org.openjdk.jmh.infra.Blackhole;
 @OutputTimeUnit(TimeUnit.SECONDS)
 @Warmup(iterations = 10, time = 1)
 @Measurement(iterations = 20, time = 1)
-@Fork(value = 10, jvmArgs = {"-Xms2g", "-Xmx2g", "-XX:+AlwaysPreTouch"})
+@Fork(
+        value = 10,
+        jvmArgs = {"-Xms2g", "-Xmx2g", "-XX:+AlwaysPreTouch"})
 @State(Scope.Thread)
 public class OrderBookBenchmark {
 
