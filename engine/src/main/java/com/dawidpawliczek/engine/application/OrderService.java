@@ -35,6 +35,12 @@ public final class OrderService {
     private volatile boolean running = true;
     private volatile long sourceWatermark = -1;
 
+    public static final class EngineOverloadedException extends RuntimeException {
+        public EngineOverloadedException() {
+            super();
+        }
+    }
+
     public OrderService(CommandLog commandLog, MarketFeedSink marketFeedSink) {
         this.commandLog = commandLog;
         this.marketFeedSink = marketFeedSink;
@@ -48,6 +54,16 @@ public final class OrderService {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
         CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
         queue.put(new Job(cmd, sourceOffset, box));
+        return box;
+    }
+
+    public CompletableFuture<List<MarketEvent>> submitOffer(OrderCommand cmd, long sourceOffset)
+            throws InterruptedException {
+        if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
+        CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
+        if (!queue.offer(new Job(cmd, sourceOffset, box))) {
+            return CompletableFuture.failedFuture(new EngineOverloadedException());
+        }
         return box;
     }
 
