@@ -58,8 +58,10 @@ cd benchmark/analysis
   there looking perfectly valid. `jmh_to_csv.py` fails loudly if the requested
   `@Param` is missing, which catches the common case — but not a stale file that
   happens to have the right shape. Check the date.
-- **`Wyklad1` runs too** and lands in the same result file. To measure only the
-  order book, add `includes = listOf("OrderBookBenchmark")` to the `jmh {}` block in
+- **`LatencyBenchmark` runs too** on a bare `gradlew :benchmark:jmh` — with its
+  `@Fork(10)` defaults that appends ~half an hour. Run the latency sweep from the
+  jar as shown above; to measure only the order book, add
+  `includes = listOf("OrderBookBenchmark")` to the `jmh {}` block in
   `benchmark/build.gradle.kts`.
 - **A laptop is not a measurement environment.** Every number collected so far came
   off an M4 Pro laptop with thermal throttling and background load uncontrolled.

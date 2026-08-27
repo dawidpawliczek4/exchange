@@ -12,7 +12,6 @@ na ile tym liczbom ufać i co z nich wynika dla pracy. Źródła: kod w
 |---|---|---|
 | `OrderBookBenchmark.matchBatch` | `Throughput` | koszt operacji na czystym `OrderBook` (bez Springa, Kafki i I/O) w funkcji szerokości arkusza |
 | `LatencyBenchmark.run` | `SingleShotTime` (JMH jako powłoka) | rozkład opóźnień w pętli otwartej przy zadanym tempie nadejść: `OrderService` (kolejka + wątek `matching-writer` + WAL w pamięci), sekcja 3 |
-| `Wyklad1` | `SingleShotTime`, 100 forków | czas zimnego startu (materiał z wykładu, nie do pracy) |
 
 `Workload.generate(n, spread, seed)` — deterministyczny generator: ceny jednostajne
 w `[10000−spread, 10000+spread]`, strona rzutem monetą, ilość 1–10, tylko zlecenia
@@ -54,7 +53,7 @@ Interpretacja:
 
 ## 3. Pętla otwarta: opóźnienie w funkcji tempa nadejść
 
-`LatencyBenchmark` to aparat z THESIS.md w pierwszym działającym wcieleniu. Konstrukcja:
+`LatencyBenchmark` to aparat pomiarowy planu pracy w pierwszym działającym wcieleniu. Konstrukcja:
 
 - **Pętla otwarta z intended-start-time**: generator strzela według harmonogramu
   `t0 + i·okres` (spin-wait), niezależnie od tego, czy silnik nadąża. Opóźnienie
@@ -131,9 +130,10 @@ Pułapki operacyjne (kosztowały już czas, nie wpaść ponownie):
 
 - `build/results/jmh/results.json` **nie jest czyszczony między przebiegami** —
   nieaktualny plik po skasowanym benchmarku wygląda na poprawny. Sprawdzać datę.
-- `Wyklad1` **jedzie razem z każdym `:benchmark:jmh`** i ląduje w tym samym JSON-ie
-  (100 forków single-shot = długi, bezużyteczny doklejony czas). Do zrobienia:
-  `includes = listOf("OrderBookBenchmark")` w bloku `jmh {}`.
+- `LatencyBenchmark` **jedzie razem z każdym `:benchmark:jmh`** — z domyślnym
+  `@Fork(10)` to ~pół godziny doklejone do sweepa arkusza. Sweep latencji odpalać
+  z jara (`java -jar benchmark-jmh.jar LatencyBenchmark`, patrz `analysis/README.md`),
+  a do samego arkusza: `includes = listOf("OrderBookBenchmark")` w bloku `jmh {}`.
 
 ## 5. Ustalenia metodyczne (same w sobie materiał do rozdziału 6)
 
@@ -158,7 +158,7 @@ ale na razie z WAL-em w pamięci, więc bez kosztu trwałości. Podział ról:
 | `LatencyBenchmark` | jaki rozkład opóźnień przy zadanym λ | silnik + kolejka, WAL w pamięci |
 | (przyszły przebieg z `FileCommandLog`) | ile dokłada strategia utrwalania | system, WAL na dysku |
 
-## 7. Backlog pomiarowy (z THESIS.md, sekcja 6)
+## 7. Backlog pomiarowy
 
 - [ ] `includes = listOf("OrderBookBenchmark")` w `jmh {}`
 - [ ] `-prof gc` + licznik dopasowań — rozbicie wypukłości krzywej z sekcji 2
