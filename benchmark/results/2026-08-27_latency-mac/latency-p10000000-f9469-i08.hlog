@@ -1,0 +1,4 @@
+#[Histogram log format version 1.3]
+#[StartTime: 1787859065.908 (seconds since epoch), Thu Aug 27 21:31:05 CEST 2026]
+"StartTimestamp","Interval_Length","Interval_Max","Interval_Compressed_Histogram"
+1787859065.908,4.991,0.374,HISTFAAAAUR42i1RO05DQQzcN5633rywRZQiQiCkSCAKlJqCIlfgKjkABRIdBUXEKTgPp6ChpQpjv7yn/c2Ox2Pv9dtxXQpuy/zZeR1y9tNp/zsDf8/4aHgfsKdhB0fBgo4Vt+jYtg07u1DHPUx/gcVZo4jVNaxpj3Ut1TAzu5S8GQutOlfoLeN078J6quiv1JSDRoWJbRwJ4YRwiFJFRi2gWJAEJNXkcELew6cgBFlLAJy1KWhsM6fgjInH0lIpbjlmCrlsUXZLil+EiFUqEXObVpOnoEwrl2Gc2kQRnATUFlQhaUTMmsUxTy1Wyw55ZDUmzUKT5DK6oxPnUpRiTMfqRciskO0JI4uMjzfw6Eo5P4lHANV9ROWRQLFL6Y4Zk5biUQxXAh7xgDXo3AF3QjqWeBL1dcAGB3waLvGCrwHfhp8bHAf8A6I2FUw=

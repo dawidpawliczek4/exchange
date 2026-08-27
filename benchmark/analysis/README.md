@@ -10,6 +10,22 @@ jmh_to_csv.py                   →  ../results/<date>_<sweep>.csv    (archival,
 plot_spread.py                  →  ../figures/*.svg + *.pdf         (vector, for LaTeX)
 ```
 
+The open-loop latency benchmark writes its own archival files directly
+(`LatencyBenchmark` → `../results/<date>_<run>/latency-p*.hlog`, one HdrHistogram
+interval log per measured iteration; `results.dir` system property picks the dir):
+
+```bash
+java -Dresults.dir=benchmark/results/$(date +%F)_latency-<machine> \
+    -jar benchmark/build/libs/benchmark-jmh.jar LatencyBenchmark
+
+.venv/bin/python plot_latency.py ../results/<date>_latency-<machine> -o ../figures
+```
+
+`plot_latency.py` merges the logs per arrival rate (exact histogram addition
+across forks and iterations, not averaging of percentile tables) and renders the
+latency-vs-percentile figure. Annotation defaults (`@Fork(10)`) are sized for the
+final campaign; for exploration override from the CLI: `-f 3 -wi 3 -i 5`.
+
 The CSV in the middle is the point. It carries the numbers *and* the environment
 they came from (`#` comments: JDK, VM flags, fork count, machine, git commit), so a
 result stays interpretable without this repo, and a reviewer can tell two runs apart.

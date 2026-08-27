@@ -1,0 +1,4 @@
+#[Histogram log format version 1.3]
+#[StartTime: 1787859126.120 (seconds since epoch), Thu Aug 27 21:32:06 CEST 2026]
+"StartTimestamp","Interval_Length","Interval_Max","Interval_Compressed_Histogram"
+1787859126.120,5.010,0.083,HISTFAAAAhd42i2Sz2oTURTG55653m/OMIm9M0FLSEMsTSttDDGUGKPEUEsoQaR/RCS4iItCQHDhKyi4FO3KtfgYPoMLl+LCJ9A3qN+dNMOc853v/s45NzCN9xdFFMUarX7xVTareHn56N/K+NOTr8Z+NLJjvZyIl0IeWG+LpM33hJ53haPr2nbHlip4tijJdkJayDq6GT3rU6qcnCvWfeprRY1+w+e+zjqnahVNv+u3i03fKzp+VMbJ9RkO8RQzLHRONcdbTHWBlzjFsb5g/dngDZ7pEZZY4DmOdIIB9RJzXeKY3gFGesqTBakppvSekOpRTXg21D7VCB2MdcA4wRA93cQu9bZucVadz20q1uiiqV1soUnV1zr7uqGX23vMQ91Hn5fsYJ+zxmiwmvE+U15/hoflpgP+mb4ekuqxb8xtA1Iddk6Cw91NtLiJkaqJG8jR0BZqVHWtMq/xPjl315gzrOk6UmYHpxlzgiosuYw5U8s6PKnmsOSoSy8NlToqoQpecEQDEVzHM8dNjrOk9Byya2mUxEnk4ipjEksksYsdo+VLHYWKfCSgV54HOoktHBkbc0cgbiZxFjpIkalwf6AhJEq3nMuKdJhiK4Ep6YoLuSARPjJ/NeNWOSe2GxK5cLZBd0/uyTn7vdzlp1th/Uq+G5p78tvIubyWD0Yey0+RM/lk5K+R+/LNyC/LWRdG7oi8C9YPI1+M/Af1lUft
