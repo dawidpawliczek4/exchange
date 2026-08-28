@@ -5,9 +5,9 @@ import com.dawidpawliczek.app.auth.JwtService
 import com.dawidpawliczek.app.auth.user.User
 import com.dawidpawliczek.app.order.adapter.inbound.dto.OrderRequest
 import com.dawidpawliczek.app.order.application.port.outbound.OrderCommandPublisher
-import com.dawidpawliczek.contracts.CancelOrderCommand
-import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Side
+import com.dawidpawliczek.contracts.command.CancelOrderCommand
+import com.dawidpawliczek.contracts.command.PlaceOrderCommand
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions

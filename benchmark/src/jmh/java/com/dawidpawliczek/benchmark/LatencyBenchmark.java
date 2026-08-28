@@ -1,6 +1,6 @@
 package com.dawidpawliczek.benchmark;
 
-import com.dawidpawliczek.contracts.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.command.PlaceOrderCommand;
 import com.dawidpawliczek.engine.application.OrderService;
 import com.dawidpawliczek.engine.ports.CommandLog;
 import java.io.IOException;

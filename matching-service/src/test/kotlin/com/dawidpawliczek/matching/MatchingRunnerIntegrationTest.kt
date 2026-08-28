@@ -1,11 +1,12 @@
 package com.dawidpawliczek.matching
 
-import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Side
 import com.dawidpawliczek.contracts.Topics
 import com.dawidpawliczek.contracts.Trade
-import com.dawidpawliczek.contracts.TradeEvent
-import com.dawidpawliczek.contracts.WireCodec
+import com.dawidpawliczek.contracts.command.CommandCodec
+import com.dawidpawliczek.contracts.command.PlaceOrderCommand
+import com.dawidpawliczek.contracts.event.MarketEventCodec
+import com.dawidpawliczek.contracts.event.TradeEvent
 import org.apache.kafka.clients.admin.Admin
 import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.ConsumerConfig
@@ -65,7 +66,7 @@ class MatchingRunnerIntegrationTest {
             },
         ).use { producer ->
             for (command in commands) {
-                producer.send(ProducerRecord(Topics.COMMANDS, WireCodec.encode(command))).get()
+                producer.send(ProducerRecord(Topics.COMMANDS, CommandCodec.encode(command))).get()
             }
         }
     }
@@ -95,7 +96,7 @@ class MatchingRunnerIntegrationTest {
             val deadline = System.currentTimeMillis() + 10_000
             while (System.currentTimeMillis() < deadline) {
                 for (record in consumer.poll(Duration.ofMillis(250))) {
-                    trades.add((WireCodec.decodeEvent(record.value()) as TradeEvent).trade())
+                    trades.add((MarketEventCodec.decode(record.value()) as TradeEvent).trade())
                 }
             }
             return trades

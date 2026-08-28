@@ -3,11 +3,11 @@ package com.dawidpawliczek.engine;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.dawidpawliczek.contracts.CancelEvent;
 import com.dawidpawliczek.contracts.CancelStatus;
 import com.dawidpawliczek.contracts.Side;
 import com.dawidpawliczek.contracts.Trade;
-import com.dawidpawliczek.contracts.TradeEvent;
+import com.dawidpawliczek.contracts.event.CancelEvent;
+import com.dawidpawliczek.contracts.event.TradeEvent;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import java.util.List;

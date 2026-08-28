@@ -1,8 +1,8 @@
 package com.dawidpawliczek.matching.adapter
 
-import com.dawidpawliczek.contracts.MarketEvent
 import com.dawidpawliczek.contracts.Topics
-import com.dawidpawliczek.contracts.WireCodec
+import com.dawidpawliczek.contracts.event.MarketEvent
+import com.dawidpawliczek.contracts.event.MarketEventCodec
 import com.dawidpawliczek.engine.ports.MarketFeedSink
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
@@ -16,7 +16,7 @@ class KafkaMarketFeedSink(
                 ProducerRecord(
                     Topics.TRADES,
                     PARTITION_KEY,
-                    WireCodec.encode(event),
+                    MarketEventCodec.encode(event),
                 ),
             )
         }

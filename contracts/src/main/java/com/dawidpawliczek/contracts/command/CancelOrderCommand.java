@@ -1,3 +1,3 @@
-package com.dawidpawliczek.contracts;
+package com.dawidpawliczek.contracts.command;
 
 public record CancelOrderCommand(long userId, long id) implements OrderCommand {}

@@ -2,8 +2,8 @@ package com.dawidpawliczek.app.order.application.service
 
 import com.dawidpawliczek.app.order.application.port.inbound.OrderUseCase
 import com.dawidpawliczek.app.order.application.port.outbound.OrderCommandPublisher
-import com.dawidpawliczek.contracts.CancelOrderCommand
-import com.dawidpawliczek.contracts.PlaceOrderCommand
+import com.dawidpawliczek.contracts.command.CancelOrderCommand
+import com.dawidpawliczek.contracts.command.PlaceOrderCommand
 import org.springframework.stereotype.Service
 
 @Service

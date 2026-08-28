@@ -3,9 +3,9 @@ package com.dawidpawliczek.e2e
 import com.dawidpawliczek.app.ExchangeApplication
 import com.dawidpawliczek.app.auth.AuthTokens
 import com.dawidpawliczek.app.auth.user.UserRepository
-import com.dawidpawliczek.contracts.CancelEvent
 import com.dawidpawliczek.contracts.CancelStatus
-import com.dawidpawliczek.contracts.TradeEvent
+import com.dawidpawliczek.contracts.event.CancelEvent
+import com.dawidpawliczek.contracts.event.TradeEvent
 import com.dawidpawliczek.matching.MatchingRunner
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull

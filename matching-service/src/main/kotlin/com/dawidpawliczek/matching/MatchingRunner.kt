@@ -1,11 +1,12 @@
 package com.dawidpawliczek.matching
 
-import com.dawidpawliczek.contracts.CancelOrderCommand
-import com.dawidpawliczek.contracts.MarketEvent
-import com.dawidpawliczek.contracts.OrderCommand
-import com.dawidpawliczek.contracts.PlaceOrderCommand
 import com.dawidpawliczek.contracts.Topics
-import com.dawidpawliczek.contracts.WireCodec
+import com.dawidpawliczek.contracts.command.CancelOrderCommand
+import com.dawidpawliczek.contracts.command.CommandCodec
+import com.dawidpawliczek.contracts.command.DepositCommand
+import com.dawidpawliczek.contracts.command.OrderCommand
+import com.dawidpawliczek.contracts.command.PlaceOrderCommand
+import com.dawidpawliczek.contracts.event.MarketEvent
 import com.dawidpawliczek.engine.application.OrderService
 import com.dawidpawliczek.matching.adapter.FileCommandLog
 import com.dawidpawliczek.matching.adapter.KafkaMarketFeedSink
@@ -50,6 +51,7 @@ class MatchingRunner(
     private lateinit var registry: PrometheusMeterRegistry
     private lateinit var placeCounter: Counter
     private lateinit var cancelCounter: Counter
+    private lateinit var depositCounter: Counter
     private lateinit var gcMetrics: JvmGcMetrics
     private lateinit var consumerMetrics: KafkaClientMetrics
     private lateinit var producerMetrics: KafkaClientMetrics
@@ -83,6 +85,7 @@ class MatchingRunner(
         registry.config().commonTags("application", "matching-service")
         placeCounter = registry.counter("exchange.commands.processed", "type", "place")
         cancelCounter = registry.counter("exchange.commands.processed", "type", "cancel")
+        depositCounter = registry.counter("exchange.commands.processed", "type", "deposit")
         gcMetrics = JvmGcMetrics().also { it.bindTo(registry) }
         consumerMetrics = KafkaClientMetrics(consumer).also { it.bindTo(registry) }
         producerMetrics = KafkaClientMetrics(producer).also { it.bindTo(registry) }
@@ -133,7 +136,7 @@ class MatchingRunner(
 
                 val futures = ArrayList<CompletableFuture<List<MarketEvent>>>(records.count())
                 for (record in records) {
-                    val cmd = WireCodec.decodeCommand(record.value())
+                    val cmd = CommandCodec.decode(record.value())
                     futures.add(orderService.submit(cmd, record.offset()))
                     incrementCounter(cmd)
                 }
@@ -160,6 +163,7 @@ class MatchingRunner(
         when (cmd) {
             is PlaceOrderCommand -> placeCounter.increment()
             is CancelOrderCommand -> cancelCounter.increment()
+            is DepositCommand -> depositCounter.increment()
         }
     }
 }

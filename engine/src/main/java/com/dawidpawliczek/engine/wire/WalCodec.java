@@ -28,6 +28,11 @@ public final class WalCodec {
         return b.array();
     }
 
+    public static byte[] encodeDeposit(long userId, long quantity) {
+        // TODO
+        return new byte[] {};
+    }
+
     public static byte[] encodeCancel(long orderId, long userId, long sourceOffset) {
         ByteBuffer b = ByteBuffer.allocate(CANCEL_SIZE);
         b.put(TAG_CANCEL);

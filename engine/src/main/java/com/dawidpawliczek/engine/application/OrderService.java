@@ -1,23 +1,23 @@
 package com.dawidpawliczek.engine.application;
 
-import com.dawidpawliczek.contracts.CancelOrderCommand;
-import com.dawidpawliczek.contracts.MarketEvent;
-import com.dawidpawliczek.contracts.OrderCommand;
-import com.dawidpawliczek.contracts.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.command.CancelOrderCommand;
+import com.dawidpawliczek.contracts.command.OrderCommand;
+import com.dawidpawliczek.contracts.command.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.event.MarketEvent;
+import com.dawidpawliczek.engine.domain.Ledger;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
 import com.dawidpawliczek.engine.ports.CommandLog;
 import com.dawidpawliczek.engine.ports.MarketFeedSink;
 import com.dawidpawliczek.engine.wire.CancelRecord;
+import com.dawidpawliczek.engine.wire.DepositRecord;
 import com.dawidpawliczek.engine.wire.PlaceRecord;
 import com.dawidpawliczek.engine.wire.WalCodec;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<List<MarketEvent>> result) {}
@@ -25,8 +25,8 @@ record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<List<MarketEve
 public final class OrderService {
 
     private final OrderBook orderBook = new OrderBook(); // single-writer
+    private final Ledger ledger = new Ledger();
     private final AtomicLong counter = new AtomicLong(0);
-    private final Queue<MarketEvent> transactionHistory = new ConcurrentLinkedQueue<>();
     private final CommandLog commandLog;
     private final MarketFeedSink marketFeedSink;
 
@@ -115,6 +115,9 @@ public final class OrderService {
                             applyJobs.add(job);
                             applyOrders.add(order);
                         }
+                        case OrderCommand c -> {
+                            // TODO
+                        }
                     }
                     maxOffset = job.sourceOffset();
                 }
@@ -132,7 +135,6 @@ public final class OrderService {
                     } else {
                         events = orderBook.submit(order);
                     }
-                    transactionHistory.addAll(events);
                     marketFeedSink.publish(events);
                     job.result().complete(events);
                 }
@@ -151,20 +153,19 @@ public final class OrderService {
         }
     }
 
-    public List<MarketEvent> history() {
-        return List.copyOf(transactionHistory);
-    }
-
     private void recover() {
         commandLog.replay(payload -> {
             var record = WalCodec.decode(payload);
             switch (record) {
                 case PlaceRecord p -> {
-                    transactionHistory.addAll(orderBook.submit(p.order()));
+                    orderBook.submit(p.order());
                     counter.set(p.order().id() + 1);
                 }
                 case CancelRecord c -> {
-                    transactionHistory.add(orderBook.cancel(c.orderId(), c.userId()));
+                    orderBook.cancel(c.orderId(), c.userId());
+                }
+                case DepositRecord d -> {
+                    ledger.deposit(); // TODO
                 }
             }
             sourceWatermark = Math.max(sourceWatermark, record.sourceOffset());

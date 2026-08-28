@@ -1,6 +1,9 @@
 package com.dawidpawliczek.engine.domain;
 
 import com.dawidpawliczek.contracts.*;
+import com.dawidpawliczek.contracts.event.CancelEvent;
+import com.dawidpawliczek.contracts.event.MarketEvent;
+import com.dawidpawliczek.contracts.event.TradeEvent;
 import java.util.*;
 import java.util.function.LongSupplier;
 

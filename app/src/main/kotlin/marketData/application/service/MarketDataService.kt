@@ -2,7 +2,7 @@ package com.dawidpawliczek.app.marketData.application.service
 
 import com.dawidpawliczek.app.marketData.application.port.inbound.BroadcastMarketData
 import com.dawidpawliczek.app.marketData.application.port.outbound.MarketDataBroadcaster
-import com.dawidpawliczek.contracts.MarketEvent
+import com.dawidpawliczek.contracts.event.MarketEvent
 import org.springframework.stereotype.Service
 import tools.jackson.databind.ObjectMapper
 
