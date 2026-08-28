@@ -18,10 +18,14 @@ I wanted to understand two things:
 | `:matching-service` | Kotlin               | Runs the engine off Kafka.        |
 | `:app` | Kotlin + Spring Boot | Gateway: REST in, trades out.     |
 | `:benchmark` | Java + JMH           | Measures the engine.              |
+| `:e2e` | Kotlin               | Full-stack test (Testcontainers). |
 
 Orders flow `gateway → orders.commands → matching-service → orders.trades → gateway`. The gateway
 validates and publishes; the matching service consumes commands, matches them in the engine, and
 publishes the trades back; the gateway fans those out over WebSocket.
+
+Deeper documentation lives in [docs/](docs/README.md) — architecture, operations,
+benchmarking, and the decision records ([ADRs](docs/adr/README.md)).
 
 ---
 
@@ -62,18 +66,18 @@ Requires JDK 25 (the Gradle toolchain fetches it if missing).
 
 ```bash
 ./gradlew test            # all module tests
-./gradlew :benchmark:jmh  # JMH benchmarks
+./gradlew :benchmark:jmh  # JMH benchmarks — runs BOTH harnesses; see docs/benchmarking.md first
 ```
 
 ### Local development
 
-To iterate on a service without rebuilding its image, bring up just Kafka and run the service from
-Gradle (it defaults to `localhost:9092`):
+To iterate on a service without rebuilding its image, bring up the containers it needs and run it
+from Gradle (Kafka defaults to `localhost:9092`):
 
 ```bash
-docker compose -f devops/docker-compose.yml up -d kafka
-./gradlew :matching-service:run
-./gradlew :app:bootRun
+docker compose -f devops/docker-compose.yml up -d kafka postgres
+./gradlew :matching-service:run   # needs Kafka
+./gradlew :app:bootRun            # needs Kafka and Postgres
 ```
 
 ## Kubernetes
@@ -100,26 +104,19 @@ kubectl port-forward svc/gateway -n exchange 8080:80
 
 ### GCP (GKE)
 
-You need `gcloud`, `kubectl`, `docker`, `just`, and a GCP project with billing enabled.
+You need `gcloud`, `terraform`, `kubectl`, `docker`, `just`, and a GCP project with billing
+enabled.
 
-One-time setup — enable the APIs, create an Artifact Registry repo, and let Docker push to it:
-
-```bash
-PROJECT_ID=your-project
-REGION=europe-central2   # pick yours
-
-gcloud services enable container.googleapis.com artifactregistry.googleapis.com
-gcloud artifacts repositories create exchange --repository-format=docker --location=$REGION
-gcloud auth configure-docker $REGION-docker.pkg.dev
-```
-
-Create a Standard cluster and point kubectl at it. Pod requests total ~2 CPU / ~4Gi, which needs
-three `e2-medium` nodes — with fewer, some pods stay `Pending`:
+Provisioning is Terraform (`infra/gcp/`): it enables the APIs and creates the Artifact Registry
+repo, a custom VPC, and a GKE Standard cluster with three `e2-medium` nodes (pod requests total
+~2 CPU / ~4Gi — with fewer nodes, some pods stay `Pending`):
 
 ```bash
-gcloud container clusters create exchange --zone $REGION-a \
-  --num-nodes 3 --machine-type e2-medium --disk-size 30
-gcloud container clusters get-credentials exchange --zone $REGION-a
+cd infra/gcp
+terraform init
+terraform apply -var project_id=your-project      # region/zone default to europe-central2(-a)
+$(terraform output -raw get_credentials_command)   # point kubectl at the cluster
+gcloud auth configure-docker europe-central2-docker.pkg.dev
 ```
 
 kubectl talks to GKE through a plugin; install it once if you don't have it:
@@ -156,8 +153,7 @@ Prometheus and Grafana stay ClusterIP — `kubectl port-forward` them if you wan
 A running cluster, its load balancer, and the registry all cost real money. Tear down with:
 
 ```bash
-gcloud container clusters delete exchange --zone $REGION-a
-gcloud artifacts repositories delete exchange --location=$REGION
+cd infra/gcp && terraform destroy -var project_id=your-project
 ```
 
 ### Observability

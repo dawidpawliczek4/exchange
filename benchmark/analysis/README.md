@@ -63,12 +63,6 @@ cd benchmark/analysis
   jar as shown above; to measure only the order book, add
   `includes = listOf("OrderBookBenchmark")` to the `jmh {}` block in
   `benchmark/build.gradle.kts`.
-- **A laptop is not a measurement environment.** Every number collected so far came
-  off an M4 Pro laptop with thermal throttling and background load uncontrolled.
-  That is fine for exploring; it is not fine for the thesis. Re-collect final numbers
-  on a quiet machine with fixed clocks and say so in the methodology chapter.
-- **`@Fork(1)` makes JMH's reported error meaningless** — it measures only
-  within-JVM iteration spread and excludes the JVM-to-JVM variance, which is the
-  larger term. Measured directly: at one fork two identical runs differed by 3.4%
-  while reporting ±1.7%, and the error estimate itself moved by 4×. Ten forks fixed
-  it (≤1.5% relative, reproducible). Do not lower it.
+
+Methodology-level caveats (laptop vs measurement machine, why 10 forks, confidence
+interval vs repeatability) live in [docs/benchmarking.md](../../docs/benchmarking.md).

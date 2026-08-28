@@ -1,18 +1,12 @@
 # :benchmark
 
-JMH benchmarks for the exchange.
+JMH harnesses for the engine: `OrderBookBenchmark` (closed-loop throughput of the pure
+book) and `LatencyBenchmark` (open-loop latency distribution, HdrHistogram).
 
-| Benchmark | Scope | Stack |
-|---|---|---|
-| `OrderBookBenchmark` | **unit / L0** | pure `OrderBook`, no Spring, no I/O |
+What they measure, the results so far, and how much to trust them:
+[docs/benchmarking.md](../docs/benchmarking.md). Analysis-pipeline usage (CSV, plots):
+[analysis/README.md](analysis/README.md).
 
-A command-log / WAL benchmark (driving `OrderService` directly) is a TODO.
-
-## Run
-
-```bash
-./gradlew :benchmark:jmh                                        # everything
-```
-
-Filter / tune via the `jmh { }` block in `build.gradle.kts` (`includes`, `warmupIterations`,
-`iterations`, `fork`).
+Note: a bare `./gradlew :benchmark:jmh` runs **both** harnesses — `LatencyBenchmark`'s
+`@Fork(10)` adds ~half an hour. `results/` and `figures/` are committed archives; add new
+dated runs, never overwrite.
