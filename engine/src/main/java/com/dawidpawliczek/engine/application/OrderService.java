@@ -24,7 +24,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
-record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<List<MarketEvent>> result) {}
+record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<Void> result) {}
 
 public final class OrderService {
 
@@ -55,18 +55,16 @@ public final class OrderService {
         this.writerThread.start();
     }
 
-    public CompletableFuture<List<MarketEvent>> submit(OrderCommand cmd, long sourceOffset)
-            throws InterruptedException {
+    public CompletableFuture<Void> submit(OrderCommand cmd, long sourceOffset) throws InterruptedException {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
-        CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
+        CompletableFuture<Void> box = new CompletableFuture<>();
         queue.put(new Job(cmd, sourceOffset, box));
         return box;
     }
 
-    public CompletableFuture<List<MarketEvent>> submitOffer(OrderCommand cmd, long sourceOffset)
-            throws InterruptedException {
+    public CompletableFuture<Void> submitOffer(OrderCommand cmd, long sourceOffset) throws InterruptedException {
         if (!running) return CompletableFuture.failedFuture(new IllegalStateException("engine stopped"));
-        CompletableFuture<List<MarketEvent>> box = new CompletableFuture<>();
+        CompletableFuture<Void> box = new CompletableFuture<>();
         if (!queue.offer(new Job(cmd, sourceOffset, box))) {
             return CompletableFuture.failedFuture(new EngineOverloadedException());
         }
@@ -119,7 +117,7 @@ public final class OrderService {
 
         for (Job job : batch) {
             if (job.sourceOffset() <= maxOffset) {
-                job.result().complete(List.of());
+                job.result().complete(null);
                 continue;
             }
 
@@ -169,7 +167,7 @@ public final class OrderService {
 
             marketFeedSink.publish(marketEvents);
             accountFeedSink.publish(accountEvents);
-            job.result().complete(marketEvents);
+            job.result().complete(null);
         }
     }
 

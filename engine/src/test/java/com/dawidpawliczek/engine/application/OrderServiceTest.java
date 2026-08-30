@@ -1,6 +1,7 @@
 package com.dawidpawliczek.engine.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dawidpawliczek.contracts.CancelStatus;
@@ -10,11 +11,14 @@ import com.dawidpawliczek.contracts.command.CancelOrderCommand;
 import com.dawidpawliczek.contracts.command.DepositCommand;
 import com.dawidpawliczek.contracts.command.OrderCommand;
 import com.dawidpawliczek.contracts.command.PlaceOrderCommand;
+import com.dawidpawliczek.contracts.event.AccountEvent;
 import com.dawidpawliczek.contracts.event.CancelEvent;
+import com.dawidpawliczek.contracts.event.DepositAccepted;
 import com.dawidpawliczek.contracts.event.MarketEvent;
 import com.dawidpawliczek.contracts.event.TradeEvent;
 import com.dawidpawliczek.engine.ports.AccountFeedSink;
 import com.dawidpawliczek.engine.ports.MarketFeedSink;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Nested;
@@ -22,12 +26,40 @@ import org.junit.jupiter.api.Test;
 
 class OrderServiceTest {
 
-    private static final MarketFeedSink NO_OP_SINK = events -> {};
     private static final AccountFeedSink NO_OP_ACCOUNT_SINK = events -> {};
 
-    private static List<MarketEvent> submit(OrderService service, PlaceOrderCommand cmd, long offset)
-            throws InterruptedException {
-        return service.submit(cmd, offset).join();
+    private static final class RecordingMarketFeedSink implements MarketFeedSink {
+        private final List<MarketEvent> events = new ArrayList<>();
+
+        @Override
+        public void publish(List<MarketEvent> published) {
+            events.addAll(published);
+        }
+
+        List<MarketEvent> drain() {
+            var out = List.copyOf(events);
+            events.clear();
+            return out;
+        }
+    }
+
+    private static final class RecordingAccountFeedSink implements AccountFeedSink {
+        private final List<AccountEvent> events = new ArrayList<>();
+
+        @Override
+        public void publish(List<AccountEvent> published) {
+            events.addAll(published);
+        }
+
+        List<AccountEvent> drain() {
+            var out = List.copyOf(events);
+            events.clear();
+            return out;
+        }
+    }
+
+    private static void submit(OrderService service, OrderCommand cmd, long offset) throws InterruptedException {
+        service.submit(cmd, offset).join();
     }
 
     private static List<Trade> trades(List<MarketEvent> events) {
@@ -42,27 +74,31 @@ class OrderServiceTest {
         return new PlaceOrderCommand(userId, Side.BUY, price, false, quantity);
     }
 
-    private static List<MarketEvent> cancel(OrderService service, long userId, long orderId, long offset)
+    private static List<List<Trade>> probeSequence(OrderService service, RecordingMarketFeedSink market)
             throws InterruptedException {
-        return service.submit(new CancelOrderCommand(userId, orderId), offset).join();
-    }
-
-    private static List<List<Trade>> probeSequence(OrderService service) throws InterruptedException {
-        return List.of(
-                trades(submit(service, buy(6, 99, 3), 5)),
-                trades(submit(service, buy(7, 101, 4), 6)),
-                trades(submit(service, sell(8, 100, 2), 7)));
+        var probes = new ArrayList<List<Trade>>();
+        submit(service, buy(6, 99, 3), 5);
+        probes.add(trades(market.drain()));
+        submit(service, buy(7, 101, 4), 6);
+        probes.add(trades(market.drain()));
+        submit(service, sell(8, 100, 2), 7);
+        probes.add(trades(market.drain()));
+        return probes;
     }
 
     @Test
     void cancelRemovesRestingOrderSoLaterOrderDoesNotTrade() throws InterruptedException {
-        var service = new OrderService(new RecordingCommandLog(), NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+        var market = new RecordingMarketFeedSink();
+        var service = new OrderService(new RecordingCommandLog(), market, NO_OP_ACCOUNT_SINK);
 
         submit(service, sell(7, 100, 5), 0);
-        var canceled = cancel(service, 7, 0, 1);
-        assertEquals(CancelStatus.CANCELED, ((CancelEvent) canceled.getFirst()).status());
+        assertTrue(market.drain().isEmpty());
 
-        assertTrue(submit(service, buy(9, 100, 5), 2).isEmpty());
+        submit(service, new CancelOrderCommand(7, 0), 1);
+        assertEquals(CancelStatus.CANCELED, ((CancelEvent) market.drain().getFirst()).status());
+
+        submit(service, buy(9, 100, 5), 2);
+        assertTrue(market.drain().isEmpty());
         service.close();
     }
 
@@ -76,16 +112,18 @@ class OrderServiceTest {
         @Test
         void cancelBeforePlaceInOneBatchCompletesBothFutures() {
             var log = new RecordingCommandLog();
-            var service = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
 
             var cancelJob = job(new CancelOrderCommand(9, 999), 0);
             var placeJob = job(sell(7, 100, 5), 1);
             service.processBatch(List.of(cancelJob, placeJob));
 
-            assertEquals(
-                    CancelStatus.REJECTED,
-                    ((CancelEvent) cancelJob.result().join().getFirst()).status());
-            assertTrue(placeJob.result().join().isEmpty());
+            assertTrue(cancelJob.result().isDone());
+            assertTrue(placeJob.result().isDone());
+            var events = market.drain();
+            assertEquals(1, events.size());
+            assertEquals(CancelStatus.REJECTED, ((CancelEvent) events.getFirst()).status());
             assertEquals(2, log.size());
             assertEquals(1, service.lastSourceOffset());
             service.close();
@@ -93,54 +131,54 @@ class OrderServiceTest {
 
         @Test
         void placeCancelPlaceInOneBatchLeavesNothingToTrade() {
-            var service = new OrderService(new RecordingCommandLog(), NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service = new OrderService(new RecordingCommandLog(), market, NO_OP_ACCOUNT_SINK);
 
             var sellJob = job(sell(7, 100, 5), 0);
             var cancelJob = job(new CancelOrderCommand(7, 0), 1);
             var buyJob = job(buy(9, 100, 5), 2);
             service.processBatch(List.of(sellJob, cancelJob, buyJob));
 
-            assertTrue(sellJob.result().join().isEmpty());
-            assertEquals(
-                    CancelStatus.CANCELED,
-                    ((CancelEvent) cancelJob.result().join().getFirst()).status());
-            assertTrue(buyJob.result().join().isEmpty());
+            var events = market.drain();
+            assertEquals(1, events.size());
+            assertEquals(CancelStatus.CANCELED, ((CancelEvent) events.getFirst()).status());
             assertEquals(2, service.lastSourceOffset());
             service.close();
         }
 
         @Test
         void depositBeforeCrossingPlacesInOneBatchStillTrades() {
-            var service = new OrderService(new RecordingCommandLog(), NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var account = new RecordingAccountFeedSink();
+            var service = new OrderService(new RecordingCommandLog(), market, account);
 
             var depositJob = job(new DepositCommand(42, 1000), 0);
             var sellJob = job(sell(7, 100, 5), 1);
             var buyJob = job(buy(9, 100, 5), 2);
             service.processBatch(List.of(depositJob, sellJob, buyJob));
 
-            assertTrue(depositJob.result().join().isEmpty());
-            assertEquals(
-                    List.of(new Trade(0, 7, 1, 9, 100, 5)),
-                    trades(buyJob.result().join()));
+            var accountEvents = account.drain();
+            assertEquals(1, accountEvents.size());
+            assertInstanceOf(DepositAccepted.class, accountEvents.getFirst());
+            assertEquals(List.of(new Trade(0, 7, 1, 9, 100, 5)), trades(market.drain()));
             assertEquals(2, service.lastSourceOffset());
             service.close();
         }
 
         @Test
         void placesBeforeCancelInOneBatchTradeAndReject() {
-            var service = new OrderService(new RecordingCommandLog(), NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service = new OrderService(new RecordingCommandLog(), market, NO_OP_ACCOUNT_SINK);
 
             var sellJob = job(sell(7, 100, 5), 0);
             var buyJob = job(buy(9, 100, 5), 1);
             var cancelJob = job(new CancelOrderCommand(9, 999), 2);
             service.processBatch(List.of(sellJob, buyJob, cancelJob));
 
-            assertEquals(
-                    List.of(new Trade(0, 7, 1, 9, 100, 5)),
-                    trades(buyJob.result().join()));
-            assertEquals(
-                    CancelStatus.REJECTED,
-                    ((CancelEvent) cancelJob.result().join().getFirst()).status());
+            var events = market.drain();
+            assertEquals(2, events.size());
+            assertEquals(new Trade(0, 7, 1, 9, 100, 5), ((TradeEvent) events.getFirst()).trade());
+            assertEquals(CancelStatus.REJECTED, ((CancelEvent) events.getLast()).status());
             assertEquals(2, service.lastSourceOffset());
             service.close();
         }
@@ -148,17 +186,16 @@ class OrderServiceTest {
         @Test
         void duplicateOffsetInsideOneBatchIsDropped() {
             var log = new RecordingCommandLog();
-            var service = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
 
             var sellJob = job(sell(7, 100, 5), 0);
             var duplicateJob = job(sell(7, 100, 5), 0);
             var buyJob = job(buy(9, 100, 5), 1);
             service.processBatch(List.of(sellJob, duplicateJob, buyJob));
 
-            assertTrue(duplicateJob.result().join().isEmpty());
-            assertEquals(
-                    List.of(new Trade(0, 7, 1, 9, 100, 5)),
-                    trades(buyJob.result().join()));
+            assertTrue(duplicateJob.result().isDone());
+            assertEquals(List.of(new Trade(0, 7, 1, 9, 100, 5)), trades(market.drain()));
             assertEquals(2, log.size());
             assertEquals(1, service.lastSourceOffset());
             service.close();
@@ -170,31 +207,34 @@ class OrderServiceTest {
         @Test
         void recoveryReappliesCancel() throws InterruptedException {
             var log = new RecordingCommandLog();
-            var service1 = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var service1 = new OrderService(log, events -> {}, NO_OP_ACCOUNT_SINK);
             submit(service1, sell(7, 100, 5), 0);
-            cancel(service1, 7, 0, 1);
+            submit(service1, new CancelOrderCommand(7, 0), 1);
             service1.close();
 
-            var service2 = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service2 = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
             assertEquals(1, service2.lastSourceOffset());
 
-            assertTrue(submit(service2, buy(9, 100, 5), 2).isEmpty());
+            submit(service2, buy(9, 100, 5), 2);
+            assertTrue(market.drain().isEmpty());
             service2.close();
         }
 
         @Test
         void recoveryRebuildsBookIdCounterAndWatermark() throws InterruptedException {
             var log = new RecordingCommandLog();
-            var service1 = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var service1 = new OrderService(log, events -> {}, NO_OP_ACCOUNT_SINK);
             submit(service1, sell(7, 100, 5), 0);
             submit(service1, sell(8, 101, 5), 1);
             service1.close();
 
-            var service2 = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service2 = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
             assertEquals(1, service2.lastSourceOffset());
 
-            var probeTrades = trades(submit(service2, buy(9, 101, 10), 2));
-            assertEquals(List.of(new Trade(0, 7, 2, 9, 100, 5), new Trade(1, 8, 2, 9, 101, 5)), probeTrades);
+            submit(service2, buy(9, 101, 10), 2);
+            assertEquals(List.of(new Trade(0, 7, 2, 9, 100, 5), new Trade(1, 8, 2, 9, 101, 5)), trades(market.drain()));
             assertEquals(2, service2.lastSourceOffset());
             service2.close();
         }
@@ -202,23 +242,25 @@ class OrderServiceTest {
         @Test
         void duplicateOffsetIsDropped() throws InterruptedException {
             var log = new RecordingCommandLog();
-            var service = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var market = new RecordingMarketFeedSink();
+            var service = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
 
             submit(service, sell(7, 100, 5), 0);
-            var duplicate = submit(service, sell(7, 100, 5), 0);
-            assertTrue(duplicate.isEmpty());
+            submit(service, sell(7, 100, 5), 0);
+            assertTrue(market.drain().isEmpty());
             assertEquals(1, log.size());
 
-            var probeTrades = trades(submit(service, buy(9, 100, 5), 1));
-            assertEquals(List.of(new Trade(0, 7, 1, 9, 100, 5)), probeTrades);
+            submit(service, buy(9, 100, 5), 1);
+            assertEquals(List.of(new Trade(0, 7, 1, 9, 100, 5)), trades(market.drain()));
 
-            var leftoverProbe = submit(service, buy(9, 100, 1), 2);
-            assertTrue(leftoverProbe.isEmpty());
+            submit(service, buy(9, 100, 1), 2);
+            assertTrue(market.drain().isEmpty());
             service.close();
 
-            var recovered = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
-            var redelivered = submit(recovered, sell(7, 100, 5), 2);
-            assertTrue(redelivered.isEmpty());
+            var recoveredMarket = new RecordingMarketFeedSink();
+            var recovered = new OrderService(log, recoveredMarket, NO_OP_ACCOUNT_SINK);
+            submit(recovered, sell(7, 100, 5), 2);
+            assertTrue(recoveredMarket.drain().isEmpty());
             assertEquals(3, log.size());
             recovered.close();
         }
@@ -226,7 +268,7 @@ class OrderServiceTest {
         @Test
         void replayIsDeterministic() throws InterruptedException {
             var log = new RecordingCommandLog();
-            var writer = new OrderService(log, NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var writer = new OrderService(log, events -> {}, NO_OP_ACCOUNT_SINK);
             submit(writer, sell(1, 100, 5), 0);
             submit(writer, sell(2, 101, 7), 1);
             submit(writer, buy(3, 100, 4), 2);
@@ -234,12 +276,14 @@ class OrderServiceTest {
             submit(writer, sell(5, 99, 3), 4);
             writer.close();
 
-            var serviceA = new OrderService(log.copy(), NO_OP_SINK, NO_OP_ACCOUNT_SINK);
-            var serviceB = new OrderService(log.copy(), NO_OP_SINK, NO_OP_ACCOUNT_SINK);
+            var marketA = new RecordingMarketFeedSink();
+            var marketB = new RecordingMarketFeedSink();
+            var serviceA = new OrderService(log.copy(), marketA, NO_OP_ACCOUNT_SINK);
+            var serviceB = new OrderService(log.copy(), marketB, NO_OP_ACCOUNT_SINK);
             assertEquals(serviceA.lastSourceOffset(), serviceB.lastSourceOffset());
 
-            var probesA = probeSequence(serviceA);
-            var probesB = probeSequence(serviceB);
+            var probesA = probeSequence(serviceA, marketA);
+            var probesB = probeSequence(serviceB, marketB);
             assertEquals(probesA, probesB);
             assertEquals(serviceA.lastSourceOffset(), serviceB.lastSourceOffset());
             serviceA.close();

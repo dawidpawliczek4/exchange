@@ -6,7 +6,6 @@ import com.dawidpawliczek.contracts.command.CommandCodec
 import com.dawidpawliczek.contracts.command.DepositCommand
 import com.dawidpawliczek.contracts.command.OrderCommand
 import com.dawidpawliczek.contracts.command.PlaceOrderCommand
-import com.dawidpawliczek.contracts.event.MarketEvent
 import com.dawidpawliczek.engine.application.OrderService
 import com.dawidpawliczek.matching.adapter.FileCommandLog
 import com.dawidpawliczek.matching.adapter.KafkaMarketFeedSink
@@ -134,7 +133,7 @@ class MatchingRunner(
 
                 if (records.isEmpty) continue
 
-                val futures = ArrayList<CompletableFuture<List<MarketEvent>>>(records.count())
+                val futures = ArrayList<CompletableFuture<Void>>(records.count())
                 for (record in records) {
                     val cmd = CommandCodec.decode(record.value())
                     futures.add(orderService.submit(cmd, record.offset()))
