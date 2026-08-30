@@ -4,7 +4,12 @@ import com.dawidpawliczek.contracts.Side
 import com.dawidpawliczek.contracts.Topics
 import com.dawidpawliczek.contracts.Trade
 import com.dawidpawliczek.contracts.command.CommandCodec
+import com.dawidpawliczek.contracts.command.DepositCommand
+import com.dawidpawliczek.contracts.command.OrderCommand
 import com.dawidpawliczek.contracts.command.PlaceOrderCommand
+import com.dawidpawliczek.contracts.event.AccountEvent
+import com.dawidpawliczek.contracts.event.AccountEventCodec
+import com.dawidpawliczek.contracts.event.DepositAccepted
 import com.dawidpawliczek.contracts.event.MarketEventCodec
 import com.dawidpawliczek.contracts.event.TradeEvent
 import org.apache.kafka.clients.admin.Admin
@@ -51,13 +56,14 @@ class MatchingRunnerIntegrationTest {
                     listOf(
                         NewTopic(Topics.COMMANDS, 1, 1),
                         NewTopic(Topics.TRADES, 1, 1),
+                        NewTopic(Topics.ACCOUNT, 1, 1),
                     ),
                 ).all()
                 .get()
         }
     }
 
-    private fun produceCommands(vararg commands: PlaceOrderCommand) {
+    private fun produceCommands(vararg commands: OrderCommand) {
         KafkaProducer<String, ByteArray>(
             Properties().apply {
                 put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.bootstrapServers)
@@ -100,6 +106,29 @@ class MatchingRunnerIntegrationTest {
                 }
             }
             return trades
+        }
+    }
+
+    private fun readAllAccountEvents(): List<Pair<String, AccountEvent>> {
+        KafkaConsumer<String, ByteArray>(
+            Properties().apply {
+                put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.bootstrapServers)
+                put(ConsumerConfig.GROUP_ID_CONFIG, "account-reader-${UUID.randomUUID()}")
+                put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer::class.java.name)
+                put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer::class.java.name)
+                put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
+            },
+        ).use { consumer ->
+            consumer.assign(listOf(TopicPartition(Topics.ACCOUNT, 0)))
+            consumer.seekToBeginning(consumer.assignment())
+            val events = mutableListOf<Pair<String, AccountEvent>>()
+            val deadline = System.currentTimeMillis() + 10_000
+            while (System.currentTimeMillis() < deadline) {
+                for (record in consumer.poll(Duration.ofMillis(250))) {
+                    events.add(record.key() to AccountEventCodec.decode(record.value()))
+                }
+            }
+            return events
         }
     }
 
@@ -173,5 +202,24 @@ class MatchingRunnerIntegrationTest {
         }
 
         assertEquals(listOf(Trade(0, 1, 1, 2, 100, 5)), readAllTrades())
+    }
+
+    @Test
+    fun depositReachesAccountTopicKeyedByUser() {
+        createTopics()
+        produceCommands(DepositCommand(42, 1000))
+
+        MatchingRunner(kafka.bootstrapServers, dir.resolve("journal.bin")).use { runner ->
+            runner.start()
+            awaitUntil("runner committed offset 1") { committedOffset() == 1L }
+        }
+
+        val records = readAllAccountEvents()
+        assertEquals(1, records.size)
+        val (key, event) = records.first()
+        assertEquals("42", key)
+        val accepted = event as DepositAccepted
+        assertEquals(42L, accepted.userId())
+        assertEquals(1L, accepted.seq())
     }
 }

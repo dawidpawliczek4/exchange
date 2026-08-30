@@ -6,4 +6,5 @@ public final class Topics {
 
     public static final String COMMANDS = "orders.commands";
     public static final String TRADES = "orders.trades";
+    public static final String ACCOUNT = "account.events";
 }

@@ -146,9 +146,8 @@ public final class OrderService {
 
         Iterator<Order> applyOrdersIterator = applyOrders.iterator();
 
-        for (int i = 0; i < applyJobs.size(); i++) {
+        for (Job job : applyJobs) {
 
-            Job job = applyJobs.get(i);
             List<MarketEvent> marketEvents = List.of();
             List<AccountEvent> accountEvents = List.of();
 

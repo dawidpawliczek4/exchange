@@ -10,9 +10,9 @@ single-writer engine, and durability/recovery. For how to *run* it, see
 ```
 gateway (:app)
   → Kafka orders.commands
-  → matching-service  [decode → OrderService (WAL → match) → market events]
-  → Kafka orders.trades
-  → gateway → /marketdata WebSocket
+  → matching-service  [decode → OrderService (WAL → match/ledger) → events]
+  → Kafka orders.trades   (market events) → gateway → /marketdata WebSocket
+  → Kafka account.events  (private account events, keyed by userId; no consumer yet)
 ```
 
 The layering rule: the pure engine never touches Kafka or Spring. `:contracts` defines the
@@ -31,15 +31,16 @@ Kafka/HTTP.
 | `:e2e` | Kotlin (tests only) | Full-stack test: Testcontainers Kafka + Postgres, gateway + runner in-process |
 
 Dependency rules: `:engine` depends on `:contracts` via `api` (not `implementation`)
-because `MarketEvent`/`OrderCommand` appear in `OrderService`'s public signatures. Both
+because contract types appear in the engine's public API (`OrderCommand` in
+`OrderService.submit`, `MarketEvent`/`AccountEvent` in the sink ports). Both
 services depend on `:engine`/`:contracts`; nothing depends on the services.
 
 ## `:contracts` — the wire
 
-Both Kafka topics carry raw `byte[]` values keyed by `String`; there is no JSON/Avro on
+All Kafka topics carry raw `byte[]` values keyed by `String`; there is no JSON/Avro on
 the wire (a protobuf migration is planned but not done). Root package holds the shared
 types (`Side`, `Trade`, `CancelStatus`, `Topics` with `orders.commands` /
-`orders.trades`); the codecs live in per-direction subpackages:
+`orders.trades` / `account.events`); the codecs live in per-direction subpackages:
 
 **`contracts.command`** — sealed `OrderCommand` (`PlaceOrderCommand`,
 `CancelOrderCommand`, `DepositCommand`) + `CommandCodec` for the `orders.commands` topic.
@@ -63,8 +64,17 @@ Fixed-width, first byte is the type tag:
 Despite its name, `orders.trades` carries the union of trade *and* cancel events — it is
 the market-event stream, not a trades-only topic.
 
+Alongside `MarketEvent` sits the sealed `AccountEvent` (`DepositAccepted`,
+`DepositRejected`; `seq()`, `timestamp()`, `userId()`) + `AccountEventCodec` for the
+`account.events` topic — the **private** per-user stream, deliberately separate from the
+public market feed. Same 17B header, body is currently just `[8B userId]` (25B total,
+types 0 = accepted, 1 = rejected). Records are keyed by `userId` (per-user ordering via
+the default partitioner), where `orders.trades` uses a constant key. `AccountEvent.seq`
+comes from the `Ledger`'s own counter — a numbering stream independent of the book's.
+
 Changing a record's fields means changing the corresponding codec's byte layout in
-lockstep; codec round-trips are covered by `CommandCodecTest` / `MarketEventCodecTest`.
+lockstep; codec round-trips are covered by `CommandCodecTest` / `MarketEventCodecTest` /
+`AccountEventCodecTest`.
 
 ## `:engine` — the matching core
 
@@ -84,8 +94,10 @@ only the single writer thread calls them.
 
 ### OrderService (`application/`) — the single-writer model
 
-Callers hand commands to `OrderService` and get a
-`CompletableFuture<List<MarketEvent>>` back:
+Callers hand commands to `OrderService` and get a `CompletableFuture<Void>` back — a
+pure completion barrier ("durable and applied"), not a result carrier; events travel
+through the sinks, and exceptional completion is what stops `MatchingRunner` from
+committing offsets after a writer failure:
 
 - `submit(cmd, sourceOffset)` — blocking `queue.put` onto a bounded
   `ArrayBlockingQueue` (capacity 65 536).
@@ -95,14 +107,15 @@ Callers hand commands to `OrderService` and get a
 
 One `matching-writer` thread drains batches and, per batch:
 
-1. **Dedup** — any job whose `sourceOffset <= watermark` completes immediately with an
-   empty event list (idempotent re-apply after seek/restart).
+1. **Dedup** — any job whose `sourceOffset <= watermark` completes immediately
+   (idempotent re-apply after seek/restart).
 2. **WAL append** — every surviving command is encoded (`WalCodec`) and appended to the
    `CommandLog`. Order ids are assigned here, before logging, so replay reproduces them.
 3. **`sync()`** — one fsync per batch (group commit), then the source-offset watermark
    advances.
-4. **Match + publish** — only now does each order hit the book; resulting events go to
-   the `MarketFeedSink` and complete each caller's future.
+4. **Apply + publish** — only now does each command take effect: orders hit the book
+   (events → `MarketFeedSink`), deposits hit the ledger (events → `AccountFeedSink`),
+   then each caller's future completes.
 
 WAL-before-match is the core invariant: a command is durable before it can have any
 effect, so replaying the WAL rebuilds the exact book state. Any exception in the writer
@@ -112,7 +125,8 @@ exceptionally.
 ### Ports (`ports/`)
 
 - `CommandLog` — `append(byte[])`, `sync()`, `replay(Consumer<byte[]>)`. The WAL.
-- `MarketFeedSink` — `publish(List<MarketEvent>)`. The event output.
+- `MarketFeedSink` — `publish(List<MarketEvent>)`. The public market-event output.
+- `AccountFeedSink` — `publish(List<AccountEvent>)`. The private per-user event output.
 
 Production adapters live in `:matching-service`; tests and benchmarks plug in in-memory
 ones.
@@ -126,7 +140,7 @@ encoded by `WalCodec`; the leading byte is the record kind:
 |---|---|---|---|
 | cancel | 0 | 25B | `[1B tag][8B sourceOffset][8B orderId][8B userId]` |
 | place | 1 | 43B | `[1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
-| deposit | — | — | not implemented: `encodeDeposit` returns an empty array and `decode` has no deposit tag |
+| deposit | — | — | **not implemented, and now load-bearing**: `encodeDeposit` returns an empty array and `decode` has no deposit tag — see the ledger section below |
 
 The tag byte was repurposed from "version" to "record kind" without breaking layout: kind
 1 is byte-identical to the old single-format place record, so pre-cancel journals still
@@ -137,26 +151,27 @@ incompatible format change means wiping the journal volume
 Every record carries the Kafka offset of the command it came from — see
 [Durability and recovery](#durability-and-recovery).
 
-### Ledger / deposit flow — scaffolding, not functional
+### Ledger / deposit flow — in-memory path works, WAL record missing
 
 The deposit flow (per [ADR-0001](adr/0001-ledger-in-hot-path.md): balances in the
-single-writer hot path; full design in [ledger-design.md](ledger-design.md)) is
-scaffolded end-to-end but **not implemented**. What works:
-`DepositCommand` round-trips through `CommandCodec`, the sealed hierarchies admit it, and
-`MatchingRunner` counts it in metrics. What doesn't:
+single-writer hot path; full design in [ledger-design.md](ledger-design.md)) now works
+end-to-end in memory. `Ledger` holds `HashMap<Long, Wallet>` (`Wallet` = single `cash`
+balance; one currency for now) with its own event `seq` counter and injectable clock,
+mirroring `OrderBook`. `deposit(userId, quantity)` credits the wallet
+(`computeIfAbsent`) and returns `DepositAccepted`, or `DepositRejected` for
+`quantity <= 0` and for balance overflow — both checks deterministic, so replay decides
+identically. In `processBatch` a `DepositCommand` is WAL-appended like any command,
+applied to the ledger in the apply phase, and its events go out through
+`AccountFeedSink` → `account.events`. `reserve/release/settle` are still empty stubs.
 
-- `Ledger` is a stub (`HashMap<Long, Wallet>` + empty `deposit/reserve/release/settle`);
-  `Wallet` is an empty record.
-- `WalCodec.encodeDeposit` returns `new byte[]{}` and there is no decode tag — a deposit
-  can never be written to or read from the WAL (the `DepositRecord` branch in
-  `recover()` is unreachable).
-- In `writerLoop`, a `DepositCommand` falls into the catch-all `case OrderCommand` TODO:
-  its future is **never completed** (a real deposit would hang `MatchingRunner`'s
-  `allOf(...).join()` forever), yet the watermark still advances past its offset without
-  a WAL record.
-
-No gateway endpoint produces deposits, so none of this is reachable in production — but
-treat any change here as "finish the feature", not "fix a bug in passing".
+**The remaining gap is durability**: `WalCodec.encodeDeposit` still returns
+`new byte[]{}` with no decode tag. The empty payload is framed and appended (valid CRC),
+so a journal that contains a deposit **breaks recovery** — replay hands the empty
+payload to `WalCodec.decode`, which underflows before reaching the tag switch. Deposits
+are therefore functional but not crash-safe, and the watermark advances past deposit
+offsets that recovery cannot rebuild. Finishing the kind-2 record (layout in
+[ledger-design.md](ledger-design.md)) is the immediate next step; no gateway endpoint
+produces deposits yet, so production cannot hit this today.
 
 ## `:matching-service` — hosting the engine
 
@@ -174,8 +189,11 @@ seeks to `lastSourceOffset() + 1` from the recovered WAL.
 
 Adapters: `FileCommandLog` (the WAL — each record framed as
 `[4B length][4B crc32][payload]`; replay stops at the first torn or corrupt frame, which
-makes a partially written tail harmless) and `KafkaMarketFeedSink` (events →
-`orders.trades`). `InMemoryCommandLog` and `DummyMarketFeedSink` exist for tests.
+makes a partially written tail harmless), `KafkaMarketFeedSink` (market events →
+`orders.trades`, constant key) and `KafkaAccountFeedSink` (account events →
+`account.events`, keyed by `userId`). Both sinks share one producer, so the existing
+`flush()`-before-commit covers both topics. `InMemoryCommandLog` and
+`DummyMarketFeedSink` exist for tests.
 
 The runner also owns everything the engine deliberately doesn't: a
 `PrometheusMeterRegistry` (common tag `application=matching-service`), the

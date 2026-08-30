@@ -9,27 +9,36 @@ Testcontainers layers need a running Docker daemon. CI runs the same suite via
 
 | Layer | Where | Tools | Speed |
 |---|---|---|---|
-| Pure unit | `:contracts`, `:engine` (`OrderBookTest`, `WalCodecTest`, codec tests) | JUnit 5 only | ms |
+| Pure unit | `:contracts`, `:engine` (`OrderBookTest`, `LedgerTest`, `WalCodecTest`, codec tests) | JUnit 5 only | ms |
 | Engine service | `:engine` (`OrderServiceTest`) | JUnit 5 + hand-written doubles | ms (real writer thread) |
 | Adapter | `:matching-service` (`FileCommandLogTest`) | JUnit 5 + `@TempDir` | ms (real file I/O) |
 | Service integration | `:matching-service` (`MatchingRunnerIntegrationTest`) | Testcontainers Kafka | ~10s+ |
 | Gateway slice | `:app` (controller tests) | `@SpringBootTest` + Testcontainers Postgres + `@MockitoBean` | seconds |
 | End-to-end | `:e2e` (`TradeFlowE2eTest`) | Testcontainers Kafka + Postgres, gateway booted, runner in-process | ~30s+ |
 
-### Pure unit — contracts and the book
+### Pure unit — contracts, the book, the ledger
 
 Codec tests assert **round-trips** (`decode(encode(x)) == x`) plus a fail-loud case for
 an unknown type/kind byte. `OrderBookTest` injects a **deterministic clock**
 (`new OrderBook(() -> 0L)`) so events are fully predictable, then asserts **whole event
 lists by equality** — `assertEquals(List.of(new TradeEvent(...)), ob.submit(order))` —
 rather than picking fields out. With a fixed clock, `seq` starting at 1, and explicit
-order ids, the expected list is exact.
+order ids, the expected list is exact. `LedgerTest` follows the same conventions (fixed
+clock, exact event equality) and covers the deposit boundaries: zero, negative, and
+balance overflow all yield `DepositRejected` with the balance untouched.
 
 ### Engine service — behavioral probing, hand-written doubles
 
 `OrderServiceTest` runs the real single-writer thread against test doubles:
 `RecordingCommandLog` (in-memory `CommandLog` that records appends, supports `size()`
-and `copy()`) and no-op lambda sinks. No mocking framework in the engine.
+and `copy()`) and recording sinks (`RecordingMarketFeedSink` / `RecordingAccountFeedSink`
+with a `drain()` that returns-and-clears). The futures are `CompletableFuture<Void>` —
+pure completion barriers — so all event assertions read the sinks, i.e. the same channel
+production uses. No mocking framework in the engine.
+
+The `Batched` nested class bypasses the queue and calls `processBatch` directly with
+hand-built `Job`s, covering the mixed multi-command batches (place+cancel+deposit in one
+drain) that `.join()`-per-command submission can never produce.
 
 The distinctive convention is the **probe pattern**: internal state (book contents,
 watermark, id counter) is never inspected directly. Instead the test submits a *probe
@@ -111,10 +120,10 @@ arrives.
 
 ## Known gaps (backlog)
 
-- **Batched writer loop is untested.** Every `OrderServiceTest` submits with
-  `.join()` between commands, so the writer only ever sees single-job batches; mixed
-  multi-command batches (place+cancel+deposit in one drain) have no coverage, although
-  they are the production shape under load.
+- **Deposit recovery is untested — deliberately.** A deposit → close → reopen test in
+  `OrderServiceTest` will fail until the WAL kind-2 record is implemented
+  (`encodeDeposit` still returns an empty array, and replaying a journal containing one
+  breaks recovery); write that test first when finishing the record.
 - **Byte layouts aren't pinned.** Round-trips pass even if a layout changes on both
   sides at once; golden-bytes fixtures (exact expected `byte[]` for known values) would
   protect wire/journal compatibility — including the "WAL kind 1 is byte-identical to

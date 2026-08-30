@@ -2,6 +2,7 @@ package com.dawidpawliczek.engine.domain;
 
 import com.dawidpawliczek.contracts.event.AccountEvent;
 import com.dawidpawliczek.contracts.event.DepositAccepted;
+import com.dawidpawliczek.contracts.event.DepositRejected;
 import java.util.HashMap;
 import java.util.function.LongSupplier;
 
@@ -24,7 +25,21 @@ public class Ledger {
     HashMap<Long, Wallet> walletHashMap = new HashMap<>();
 
     public AccountEvent deposit(long userId, long quantity) {
-        return new DepositAccepted(++seq, clock.getAsLong());
+        if (quantity > 0 && canAdd(quantity, cashOf(userId))) {
+            walletHashMap.computeIfAbsent(userId, _ -> new Wallet()).cash += quantity;
+            return new DepositAccepted(++seq, clock.getAsLong(), userId);
+        } else {
+            return new DepositRejected(++seq, clock.getAsLong(), userId);
+        }
+    }
+
+    static boolean canAdd(long a, long b) {
+        return b <= 0 ? Long.MIN_VALUE - b <= a : Long.MAX_VALUE - b >= a;
+    }
+
+    long cashOf(long userId) {
+        Wallet wallet = walletHashMap.get(userId);
+        return wallet == null ? 0 : wallet.cash;
     }
 
     void reserve() {}

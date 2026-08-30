@@ -1,3 +1,5 @@
 package com.dawidpawliczek.engine.domain;
 
-public record Wallet() {}
+public class Wallet {
+    long cash;
+}
