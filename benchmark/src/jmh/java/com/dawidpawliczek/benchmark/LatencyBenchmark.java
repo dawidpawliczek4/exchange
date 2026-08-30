@@ -41,7 +41,7 @@ public class LatencyBenchmark {
     @Setup(Level.Iteration)
     public void setUp() {
         CommandLog commandLog = new InMemoryCommandLog();
-        orderService = new OrderService(commandLog, events -> {});
+        orderService = new OrderService(commandLog, events -> {}, events -> {});
         histogram = new ConcurrentHistogram(3);
         cmds = Workload.generate((int) (EXECUTION_TIME_NS / periodNs), 100, 42L);
         iterationStartMillis = System.currentTimeMillis();

@@ -28,7 +28,7 @@ public final class WalCodec {
         return b.array();
     }
 
-    public static byte[] encodeDeposit(long userId, long quantity) {
+    public static byte[] encodeDeposit(long userId, long quantity, long sourceOffset) {
         // TODO
         return new byte[] {};
     }

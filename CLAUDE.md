@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A trading-exchange matching engine, evolving into a market-simulation platform. This repo is Dawid's engineering thesis (defense Feb 2027); direction and scope live in `docs/thesis-plan.md` — **consult it before proposing new scope** (planned: ledger → leveraged perpetual → agent crowd → LLM traders; the "further work" list there is deliberately out of scope). Gradle multi-module (version catalog + `buildSrc` convention plugins), JDK 25, Java engine + Kotlin/Spring Boot services.
 
-Docs live in `docs/` (see `docs/README.md`): `architecture.md` (deep dive: wire formats, single-writer, recovery), `operations.md` (running/deploying), `benchmarking.md` (results + methodology), `adr/` (decision records). This file is the summary; the docs are the detail.
+Docs live in `docs/` (see `docs/README.md`): `architecture.md` (deep dive: wire formats, single-writer, recovery), `operations.md` (running/deploying), `benchmarking.md` (results + methodology), `testing.md` (test layers and conventions — match them when writing tests), `adr/` (decision records). This file is the summary; the docs are the detail.
 
 ## Commands
 

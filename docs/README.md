@@ -6,6 +6,8 @@
   (Terraform), state resets. The `justfile` is the canonical entry point.
 - [benchmarking.md](benchmarking.md) — what has been measured, the results, how much to
   trust them, methodological findings, measurement backlog.
+- [testing.md](testing.md) — the test layers, per-layer conventions (probe pattern,
+  hand-written doubles, Testcontainers), where a new test belongs, known gaps.
 - [ledger-design.md](ledger-design.md) — design for the settlement ledger (LED epic):
   decisions L1–L8, invariants, new classes, `OrderService` changes, implementation
   order.

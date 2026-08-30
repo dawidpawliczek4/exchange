@@ -80,7 +80,7 @@ class MatchingRunner(
                 },
             )
         commandLog = FileCommandLog(journalPath)
-        orderService = OrderService(commandLog, KafkaMarketFeedSink(producer))
+        orderService = OrderService(commandLog, KafkaMarketFeedSink(producer), { })
         registry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
         registry.config().commonTags("application", "matching-service")
         placeCounter = registry.counter("exchange.commands.processed", "type", "place")
