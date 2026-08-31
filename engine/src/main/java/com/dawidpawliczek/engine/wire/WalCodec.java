@@ -10,10 +10,13 @@ public final class WalCodec {
 
     // cancel (tag 0, 25B): [1B tag][8B sourceOffset][8B orderId][8B userId]
     // place  (tag 1, 43B): [1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]
+    // deposit (tag 2, 25B): [1B tag][8B sourceOffset][8B quantity][8B userId]
     private static final byte TAG_CANCEL = 0;
     private static final byte TAG_PLACE = 1;
+    private static final byte TAG_DEPOSIT = 2;
     private static final int CANCEL_SIZE = 1 + 8 + 8 + 8;
     private static final int PLACE_SIZE = 1 + 8 + 8 + 8 + 1 + 8 + 1 + 8;
+    private static final int DEPOSIT_SIZE = 1 + 8 + 8 + 8;
 
     public static byte[] encode(Order o, long sourceOffset) {
         ByteBuffer b = ByteBuffer.allocate(PLACE_SIZE);
@@ -29,8 +32,12 @@ public final class WalCodec {
     }
 
     public static byte[] encodeDeposit(long userId, long quantity, long sourceOffset) {
-        // TODO
-        return new byte[] {};
+        ByteBuffer b = ByteBuffer.allocate(DEPOSIT_SIZE);
+        b.put(TAG_DEPOSIT);
+        b.putLong(sourceOffset);
+        b.putLong(quantity);
+        b.putLong(userId);
+        return b.array();
     }
 
     public static byte[] encodeCancel(long orderId, long userId, long sourceOffset) {
@@ -61,6 +68,12 @@ public final class WalCodec {
                 long orderId = b.getLong();
                 long userId = b.getLong();
                 yield new CancelRecord(orderId, userId, sourceOffset);
+            }
+            case TAG_DEPOSIT -> {
+                long sourceOffset = b.getLong();
+                long quantity = b.getLong();
+                long userId = b.getLong();
+                yield new DepositRecord(userId, quantity, sourceOffset);
             }
             default -> throw new IllegalArgumentException("unsupported WAL record kind: " + tag);
         };

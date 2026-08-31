@@ -38,6 +38,17 @@ class WalCodecTest {
     }
 
     @Test
+    void depositRoundTrip() {
+        var encoded = WalCodec.encodeDeposit(1, 1500, 7_000_000_123L);
+        assertEquals(25, encoded.length);
+
+        var decoded = assertInstanceOf(DepositRecord.class, WalCodec.decode(encoded));
+        assertEquals(1500, decoded.quantity());
+        assertEquals(1, decoded.userId());
+        assertEquals(7_000_000_123L, decoded.sourceOffset());
+    }
+
+    @Test
     void rejectsUnknownKind() {
         var stale = new byte[] {3};
         assertThrows(IllegalArgumentException.class, () -> WalCodec.decode(stale));

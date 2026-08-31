@@ -14,6 +14,7 @@ import com.dawidpawliczek.contracts.command.PlaceOrderCommand;
 import com.dawidpawliczek.contracts.event.AccountEvent;
 import com.dawidpawliczek.contracts.event.CancelEvent;
 import com.dawidpawliczek.contracts.event.DepositAccepted;
+import com.dawidpawliczek.contracts.event.DepositRejected;
 import com.dawidpawliczek.contracts.event.MarketEvent;
 import com.dawidpawliczek.contracts.event.TradeEvent;
 import com.dawidpawliczek.engine.ports.AccountFeedSink;
@@ -263,6 +264,30 @@ class OrderServiceTest {
             assertTrue(recoveredMarket.drain().isEmpty());
             assertEquals(3, log.size());
             recovered.close();
+        }
+
+        @Test
+        void recoveryReappliesDeposit() throws InterruptedException {
+            var log = new RecordingCommandLog();
+            var service1 = new OrderService(log, events -> {}, NO_OP_ACCOUNT_SINK);
+            submit(service1, new DepositCommand(42, Long.MAX_VALUE), 0);
+            service1.close();
+
+            var account = new RecordingAccountFeedSink();
+            var service2 = new OrderService(log, events -> {}, account);
+            assertEquals(0, service2.lastSourceOffset());
+            assertTrue(account.drain().isEmpty());
+
+            submit(service2, new DepositCommand(42, 1), 1);
+            var rejected =
+                    assertInstanceOf(DepositRejected.class, account.drain().getFirst());
+            assertEquals(2, rejected.seq());
+            assertEquals(42, rejected.userId());
+
+            submit(service2, new DepositCommand(42, 1000), 0);
+            assertTrue(account.drain().isEmpty());
+            assertEquals(2, log.size());
+            service2.close();
         }
 
         @Test

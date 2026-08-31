@@ -44,7 +44,9 @@ The distinctive convention is the **probe pattern**: internal state (book conten
 watermark, id counter) is never inspected directly. Instead the test submits a *probe
 order* that would cross with the state under question and asserts on the resulting
 trades — e.g. "after cancel, a crossing buy trades nothing" proves the cancel removed
-the resting order. Recovery tests build state in one `OrderService`, `close()` it, open
+the resting order. The ledger analogue: deposit `Long.MAX_VALUE`, recover, then probe
+with a further deposit — `DepositRejected` (overflow) proves the balance survived.
+Recovery tests build state in one `OrderService`, `close()` it, open
 a second one on the same log, and probe the recovered instance. Determinism is asserted
 by recovering two services from `log.copy()` and comparing full probe sequences.
 
@@ -120,10 +122,6 @@ arrives.
 
 ## Known gaps (backlog)
 
-- **Deposit recovery is untested — deliberately.** A deposit → close → reopen test in
-  `OrderServiceTest` will fail until the WAL kind-2 record is implemented
-  (`encodeDeposit` still returns an empty array, and replaying a journal containing one
-  breaks recovery); write that test first when finishing the record.
 - **Byte layouts aren't pinned.** Round-trips pass even if a layout changes on both
   sides at once; golden-bytes fixtures (exact expected `byte[]` for known values) would
   protect wire/journal compatibility — including the "WAL kind 1 is byte-identical to

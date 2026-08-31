@@ -140,7 +140,7 @@ encoded by `WalCodec`; the leading byte is the record kind:
 |---|---|---|---|
 | cancel | 0 | 25B | `[1B tag][8B sourceOffset][8B orderId][8B userId]` |
 | place | 1 | 43B | `[1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
-| deposit | — | — | **not implemented, and now load-bearing**: `encodeDeposit` returns an empty array and `decode` has no deposit tag — see the ledger section below |
+| deposit | 2 | 25B | `[1B tag][8B sourceOffset][8B quantity][8B userId]` |
 
 The tag byte was repurposed from "version" to "record kind" without breaking layout: kind
 1 is byte-identical to the old single-format place record, so pre-cancel journals still
@@ -151,27 +151,23 @@ incompatible format change means wiping the journal volume
 Every record carries the Kafka offset of the command it came from — see
 [Durability and recovery](#durability-and-recovery).
 
-### Ledger / deposit flow — in-memory path works, WAL record missing
+### Ledger / deposit flow
 
 The deposit flow (per [ADR-0001](adr/0001-ledger-in-hot-path.md): balances in the
-single-writer hot path; full design in [ledger-design.md](ledger-design.md)) now works
-end-to-end in memory. `Ledger` holds `HashMap<Long, Wallet>` (`Wallet` = single `cash`
-balance; one currency for now) with its own event `seq` counter and injectable clock,
-mirroring `OrderBook`. `deposit(userId, quantity)` credits the wallet
+single-writer hot path; full design in [ledger-design.md](ledger-design.md)) is complete
+and crash-safe inside the engine. `Ledger` holds `HashMap<Long, Wallet>` (`Wallet` =
+single `cash` balance; one currency for now) with its own event `seq` counter and
+injectable clock, mirroring `OrderBook`. `deposit(userId, quantity)` credits the wallet
 (`computeIfAbsent`) and returns `DepositAccepted`, or `DepositRejected` for
 `quantity <= 0` and for balance overflow — both checks deterministic, so replay decides
-identically. In `processBatch` a `DepositCommand` is WAL-appended like any command,
-applied to the ledger in the apply phase, and its events go out through
-`AccountFeedSink` → `account.events`. `reserve/release/settle` are still empty stubs.
-
-**The remaining gap is durability**: `WalCodec.encodeDeposit` still returns
-`new byte[]{}` with no decode tag. The empty payload is framed and appended (valid CRC),
-so a journal that contains a deposit **breaks recovery** — replay hands the empty
-payload to `WalCodec.decode`, which underflows before reaching the tag switch. Deposits
-are therefore functional but not crash-safe, and the watermark advances past deposit
-offsets that recovery cannot rebuild. Finishing the kind-2 record (layout in
-[ledger-design.md](ledger-design.md)) is the immediate next step; no gateway endpoint
-produces deposits yet, so production cannot hit this today.
+identically. In `processBatch` a `DepositCommand` is WAL-appended as a kind-2 record
+like any command, applied to the ledger in the apply phase, and its events go out
+through `AccountFeedSink` → `account.events`; on recovery the record replays into
+`Ledger.deposit` (rebuilding balances and the ledger `seq`, publishing nothing) and its
+offset feeds the watermark. `reserve/release/settle` are still empty stubs — wiring the
+ledger into place/cancel is the next step. Outside the engine the flow is not reachable
+yet: no gateway endpoint produces `DepositCommand`s, and nothing consumes
+`account.events`.
 
 ## `:matching-service` — hosting the engine
 
