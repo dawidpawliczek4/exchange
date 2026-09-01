@@ -1,11 +1,15 @@
 package com.dawidpawliczek.engine.application;
 
+import com.dawidpawliczek.contracts.Asset;
+import com.dawidpawliczek.contracts.Side;
+import com.dawidpawliczek.contracts.Trade;
 import com.dawidpawliczek.contracts.command.CancelOrderCommand;
 import com.dawidpawliczek.contracts.command.DepositCommand;
 import com.dawidpawliczek.contracts.command.OrderCommand;
 import com.dawidpawliczek.contracts.command.PlaceOrderCommand;
 import com.dawidpawliczek.contracts.event.AccountEvent;
 import com.dawidpawliczek.contracts.event.MarketEvent;
+import com.dawidpawliczek.contracts.event.TradeEvent;
 import com.dawidpawliczek.engine.domain.Ledger;
 import com.dawidpawliczek.engine.domain.Order;
 import com.dawidpawliczek.engine.domain.OrderBook;
@@ -25,6 +29,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<Void> result) {}
+
+record Applied(List<MarketEvent> marketEvents, List<AccountEvent> accountEvents) {}
 
 public final class OrderService {
 
@@ -134,7 +140,7 @@ public final class OrderService {
                     applyOrders.add(order);
                 }
                 case DepositCommand c -> {
-                    commandLog.append(WalCodec.encodeDeposit(c.userId(), c.quantity(), job.sourceOffset()));
+                    commandLog.append(WalCodec.encodeDeposit(c.userId(), c.asset(), c.quantity(), job.sourceOffset()));
                     applyJobs.add(job);
                 }
             }
@@ -147,27 +153,79 @@ public final class OrderService {
         Iterator<Order> applyOrdersIterator = applyOrders.iterator();
 
         for (Job job : applyJobs) {
+            Applied applied =
+                    switch (job.cmd()) {
+                        case CancelOrderCommand c -> applyCancel(c.id(), c.userId());
+                        case PlaceOrderCommand _ -> applyPlace(applyOrdersIterator.next());
+                        case DepositCommand c -> applyDeposit(c.userId(), c.asset(), c.quantity());
+                    };
 
-            List<MarketEvent> marketEvents = List.of();
-            List<AccountEvent> accountEvents = List.of();
-
-            switch (job.cmd()) {
-                case CancelOrderCommand c -> {
-                    marketEvents = List.of(orderBook.cancel(c.id(), c.userId()));
-                }
-                case PlaceOrderCommand c -> {
-                    Order order = applyOrdersIterator.next();
-                    marketEvents = orderBook.submit(order);
-                }
-                case DepositCommand c -> {
-                    accountEvents = List.of(ledger.deposit(c.userId(), c.quantity()));
-                }
-            }
-
-            marketFeedSink.publish(marketEvents);
-            accountFeedSink.publish(accountEvents);
+            marketFeedSink.publish(applied.marketEvents());
+            accountFeedSink.publish(applied.accountEvents());
             job.result().complete(null);
         }
+    }
+
+    private Applied applyPlace(Order order) {
+        boolean reserved;
+        if (order.quantity() <= 0 || (!order.isMarket() && order.price() <= 0)) {
+            reserved = false;
+        } else if (order.side() == Side.BUY) {
+            long cost = order.isMarket()
+                    ? orderBook.calculateMarketOrderValue(order.quantity())
+                    : limitCost(order.price(), order.quantity());
+            reserved = cost >= 0 && ledger.reserveCash(order.userId(), cost);
+        } else {
+            reserved = ledger.reserveAsset(order.userId(), order.quantity());
+        }
+        if (!reserved) {
+            return new Applied(List.of(), List.of(ledger.orderRejected(order.userId())));
+        }
+
+        List<MarketEvent> events = orderBook.submit(order);
+        for (MarketEvent event : events) {
+            if (!(event instanceof TradeEvent tradeEvent)) continue;
+            Trade trade = tradeEvent.trade();
+            long buyerId = order.side() == Side.BUY ? trade.takerUserId() : trade.makerUserId();
+            long sellerId = order.side() == Side.BUY ? trade.makerUserId() : trade.takerUserId();
+            ledger.settle(buyerId, sellerId, trade.price(), trade.quantity());
+            if (order.side() == Side.BUY && !order.isMarket() && order.price() > trade.price()) {
+                ledger.releaseCash(order.userId(), (order.price() - trade.price()) * trade.quantity());
+            }
+        }
+        if (order.isMarket() && order.side() == Side.SELL && order.quantity() > 0) {
+            ledger.releaseAsset(order.userId(), order.quantity());
+        }
+        return new Applied(events, List.of());
+    }
+
+    private Applied applyCancel(long orderId, long userId) {
+        var result = orderBook.cancel(orderId, userId);
+        Order cancelled = result.cancelled();
+        if (cancelled != null) {
+            if (cancelled.side() == Side.BUY) {
+                ledger.releaseCash(cancelled.userId(), cancelled.price() * cancelled.quantity());
+            } else {
+                ledger.releaseAsset(cancelled.userId(), cancelled.quantity());
+            }
+        }
+        return new Applied(List.of(result.event()), List.of());
+    }
+
+    private Applied applyDeposit(long userId, Asset asset, long quantity) {
+        return new Applied(List.of(), List.of(ledger.deposit(userId, asset, quantity)));
+    }
+
+    private static long limitCost(long price, long quantity) {
+        try {
+            return Math.multiplyExact(price, quantity);
+        } catch (ArithmeticException e) {
+            return -1;
+        }
+    }
+
+    Ledger ledger() {
+        return ledger;
     }
 
     private void recover() {
@@ -175,15 +233,11 @@ public final class OrderService {
             var record = WalCodec.decode(payload);
             switch (record) {
                 case PlaceRecord r -> {
-                    orderBook.submit(r.order());
+                    applyPlace(r.order());
                     counter.set(r.order().id() + 1);
                 }
-                case CancelRecord r -> {
-                    orderBook.cancel(r.orderId(), r.userId());
-                }
-                case DepositRecord r -> {
-                    ledger.deposit(r.userId(), r.quantity());
-                }
+                case CancelRecord r -> applyCancel(r.orderId(), r.userId());
+                case DepositRecord r -> applyDeposit(r.userId(), r.asset(), r.quantity());
             }
             sourceWatermark = Math.max(sourceWatermark, record.sourceOffset());
         });

@@ -3,10 +3,19 @@ package com.dawidpawliczek.e2e
 import com.dawidpawliczek.app.ExchangeApplication
 import com.dawidpawliczek.app.auth.AuthTokens
 import com.dawidpawliczek.app.auth.user.UserRepository
+import com.dawidpawliczek.contracts.Asset
 import com.dawidpawliczek.contracts.CancelStatus
+import com.dawidpawliczek.contracts.Topics
+import com.dawidpawliczek.contracts.command.CommandCodec
+import com.dawidpawliczek.contracts.command.DepositCommand
 import com.dawidpawliczek.contracts.event.CancelEvent
 import com.dawidpawliczek.contracts.event.TradeEvent
 import com.dawidpawliczek.matching.MatchingRunner
+import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.ProducerConfig
+import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.common.serialization.ByteArraySerializer
+import org.apache.kafka.common.serialization.StringSerializer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -36,6 +45,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import tools.jackson.databind.ObjectMapper
 import java.nio.file.Path
+import java.util.Properties
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -94,6 +104,7 @@ class TradeFlowE2eTest {
 
             val tokens = register()
             val userId = registeredUserId()
+            seedFunds(userId)
             val messages = LinkedBlockingQueue<String>()
             val session =
                 StandardWebSocketClient()
@@ -129,6 +140,7 @@ class TradeFlowE2eTest {
 
             val tokens = register()
             val userId = registeredUserId()
+            seedFunds(userId)
 
             val messages = LinkedBlockingQueue<String>()
             val session =
@@ -174,6 +186,26 @@ class TradeFlowE2eTest {
             .responseBody!!
 
     private fun registeredUserId(): Long = userRepository.findAll().single().id
+
+    private fun seedFunds(userId: Long) {
+        KafkaProducer<String, ByteArray>(
+            Properties().apply {
+                put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.bootstrapServers)
+                put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer::class.java.name)
+                put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer::class.java.name)
+            },
+        ).use { producer ->
+            for (asset in Asset.entries) {
+                producer
+                    .send(
+                        ProducerRecord(
+                            Topics.COMMANDS,
+                            CommandCodec.encode(DepositCommand(userId, asset, 1_000_000)),
+                        ),
+                    ).get()
+            }
+        }
+    }
 
     private fun cancelOrder(
         token: String,

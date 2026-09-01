@@ -1,3 +1,5 @@
 package com.dawidpawliczek.engine.wire;
 
-public record DepositRecord(long userId, long quantity, long sourceOffset) implements WalRecord {}
+import com.dawidpawliczek.contracts.Asset;
+
+public record DepositRecord(long userId, Asset asset, long quantity, long sourceOffset) implements WalRecord {}

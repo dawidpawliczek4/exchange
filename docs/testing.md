@@ -24,8 +24,10 @@ an unknown type/kind byte. `OrderBookTest` injects a **deterministic clock**
 lists by equality** — `assertEquals(List.of(new TradeEvent(...)), ob.submit(order))` —
 rather than picking fields out. With a fixed clock, `seq` starting at 1, and explicit
 order ids, the expected list is exact. `LedgerTest` follows the same conventions (fixed
-clock, exact event equality) and covers the deposit boundaries: zero, negative, and
-balance overflow all yield `DepositRejected` with the balance untouched.
+clock, exact event equality) and covers the deposit boundaries (zero, negative, and
+balance overflow all yield `DepositRejected` with the balance untouched) plus the
+reserve/release/settle mechanics in isolation: reserve failures leave state unchanged,
+settle credits only the receiving legs, a self-trade nets to the starting point.
 
 ### Engine service — behavioral probing, hand-written doubles
 
@@ -53,6 +55,14 @@ by recovering two services from `log.copy()` and comparing full probe sequences.
 Async is handled by `submit(...).join()` — the future completes only after WAL append +
 match, so no sleeps or timeouts are needed at this layer.
 
+Since the ledger gates every place, **tests seed balances first**: the `seed(service,
+offset, userIds...)` helper deposits generous QUOTE+BASE per user at offsets `0..9`, and
+orders start at offset 10 by convention. Balance assertions read
+`service.ledger().cashOf/assetOf(...)` directly — sanctioned reads (the future gateway
+projection uses the same API), not probe substitutes: settlement scenarios assert exact
+arithmetic (`SEED - 500` after buying 5 @ 100, price improvement refunded, remainder
+released on cancel), while book contents are still verified by probes.
+
 ### Adapter — real I/O, injected corruption
 
 `FileCommandLogTest` writes a real journal into a JUnit `@TempDir` and then damages it
@@ -67,7 +77,9 @@ corrupt or incomplete frame, keep everything before it.
 with a real journal. Its signature move is simulating a **lost offset commit**: run the
 runner, then `alterConsumerGroupOffsets` back to 0 behind its back, restart the runner on
 the same journal, and assert (by reading all of `orders.trades`) that no duplicate trades
-were published — the WAL watermark test at system level.
+were published — the WAL watermark test at system level. Trade tests prepend seed
+deposits (`seeds()`); an NSF case asserts the `OrderRejected` lands on `account.events`
+keyed by the user and no trade is published.
 
 Waiting is a hand-rolled `awaitUntil(description) { condition }` polling helper with a
 deadline — assert on *observable progress* (committed offset, `lastSourceOffset()`),
@@ -101,7 +113,10 @@ camelCase.
 
 `TradeFlowE2eTest` boots the gateway as a Spring test with real Kafka + Postgres
 containers and runs `MatchingRunner` **in-process** (`.use { }` for lifecycle) — no
-Docker images of our own services are involved. Flow: register over HTTP → JWT → open
+Docker images of our own services are involved. Because the gateway has no deposit
+endpoint yet, `seedFunds(userId)` produces `DepositCommand`s straight to
+`orders.commands` with a raw producer — single-partition ordering guarantees they apply
+before the orders. Flow: register over HTTP → JWT → seed → open
 the `/marketdata` WebSocket → post crossing orders → assert the decoded event arrives on
 the socket. `ContainerTestUtils.waitForAssignment` gates the race between listener
 startup and the first order; a bounded `messages.poll(30s)` replaces sleeps. Negative
@@ -128,9 +143,11 @@ arrives.
   the old versionless record" claim, which currently has no test.
 - `submitOffer` / `EngineOverloadedException` (queue-full) and the writer-loop
   fail-stop path (append throws → all futures exceptional) are untested.
-- No property-based tests yet; `ledger-design.md` §7 commits to them (jqwik) for the
-  ledger invariants I1–I4 — the book could get conservation/no-crossed-book properties
-  from the same setup.
+- No property-based tests yet; `ledger-design.md` §7 commits to them (jqwik). With
+  implicit reservations the oracle is cross-system conservation — `Σ ledger balances +
+  Σ (remaining × limit) over open orders == Σ accepted deposits`, per asset, after every
+  operation of a random command sequence — plus no-negative-balance and
+  replay-equivalence; the book could get no-crossed-book properties from the same setup.
 - The WebSocket JSON shape (Jackson serialization of `TradeEvent`/`CancelEvent`) is
   asserted only by decoding it back in `:e2e`; once the frontend exists, the exact JSON
   field names become a contract and deserve a pinning test.

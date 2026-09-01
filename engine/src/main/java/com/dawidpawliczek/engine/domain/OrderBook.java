@@ -23,13 +23,16 @@ public final class OrderBook {
         this.clock = clock;
     }
 
-    public synchronized MarketEvent cancel(long orderId, long userId) {
-        boolean removed = cancelIn(orderId, userId, bids) || cancelIn(orderId, userId, asks);
-        CancelStatus status = removed ? CancelStatus.CANCELED : CancelStatus.REJECTED;
-        return new CancelEvent(++seq, clock.getAsLong(), userId, orderId, status);
+    public record CancelResult(CancelEvent event, Order cancelled) {}
+
+    public synchronized CancelResult cancel(long orderId, long userId) {
+        Order removed = cancelIn(orderId, userId, bids);
+        if (removed == null) removed = cancelIn(orderId, userId, asks);
+        CancelStatus status = removed != null ? CancelStatus.CANCELED : CancelStatus.REJECTED;
+        return new CancelResult(new CancelEvent(++seq, clock.getAsLong(), userId, orderId, status), removed);
     }
 
-    private boolean cancelIn(long orderId, long userId, NavigableMap<Long, Deque<Order>> side) {
+    private Order cancelIn(long orderId, long userId, NavigableMap<Long, Deque<Order>> side) {
         for (var e : side.entrySet()) {
             var orders = e.getValue();
             var it = orders.iterator();
@@ -38,11 +41,30 @@ public final class OrderBook {
                 if (o.id() == orderId && o.userId() == userId) {
                     it.remove();
                     if (orders.isEmpty()) side.remove(e.getKey());
-                    return true;
+                    return o;
                 }
             }
         }
-        return false;
+        return null;
+    }
+
+    public synchronized long calculateMarketOrderValue(long quantity) {
+        long cost = 0;
+        long remaining = quantity;
+        for (var level : asks.entrySet()) {
+            long price = level.getKey();
+            for (Order resting : level.getValue()) {
+                if (remaining <= 0) return cost;
+                long fill = Math.min(remaining, resting.quantity());
+                try {
+                    cost = Math.addExact(cost, Math.multiplyExact(fill, price));
+                } catch (ArithmeticException e) {
+                    return -1;
+                }
+                remaining -= fill;
+            }
+        }
+        return cost;
     }
 
     public synchronized List<MarketEvent> submit(Order incoming) {

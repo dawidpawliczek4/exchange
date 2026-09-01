@@ -1,3 +1,5 @@
 package com.dawidpawliczek.contracts.event;
 
-public record DepositAccepted(long seq, long timestamp, long userId) implements AccountEvent {}
+import com.dawidpawliczek.contracts.Asset;
+
+public record DepositAccepted(long seq, long timestamp, long userId, Asset asset) implements AccountEvent {}

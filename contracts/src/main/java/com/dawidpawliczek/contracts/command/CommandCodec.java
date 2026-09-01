@@ -1,5 +1,6 @@
 package com.dawidpawliczek.contracts.command;
 
+import com.dawidpawliczek.contracts.Asset;
 import com.dawidpawliczek.contracts.Side;
 import java.nio.ByteBuffer;
 
@@ -9,10 +10,10 @@ public final class CommandCodec {
 
     // place  (type 0, 27B): [1B type][8B userId][1B side][8B price][1B market][8B qty]
     // cancel (type 1, 17B): [1B type][8B userId][8B id]
-    // deposit (type 2, 17B) : [1B type][8B userId][8B quantity]
+    // deposit (type 2, 18B) : [1B type][8B userId][1B asset][8B quantity]
     private static final int PLACE_SIZE = 1 + 8 + 1 + 8 + 1 + 8;
     private static final int CANCEL_SIZE = 1 + 8 + 8;
-    private static final int DEPOSIT_SIZE = 1 + 8 + 8;
+    private static final int DEPOSIT_SIZE = 1 + 8 + 1 + 8;
     private static final byte TYPE_PLACE = 0;
     private static final byte TYPE_CANCEL = 1;
     private static final byte TYPE_DEPOSIT = 2;
@@ -40,6 +41,7 @@ public final class CommandCodec {
                 ByteBuffer b = ByteBuffer.allocate(DEPOSIT_SIZE);
                 b.put(TYPE_DEPOSIT);
                 b.putLong(cmd.userId());
+                b.put((byte) (cmd.asset() == Asset.QUOTE ? 0 : 1));
                 b.putLong(cmd.quantity());
                 yield b.array();
             }
@@ -65,8 +67,9 @@ public final class CommandCodec {
             }
             case TYPE_DEPOSIT -> {
                 long userId = b.getLong();
+                Asset asset = b.get() == 0 ? Asset.QUOTE : Asset.BASE;
                 long quantity = b.getLong();
-                return new DepositCommand(userId, quantity);
+                return new DepositCommand(userId, asset, quantity);
             }
             default -> throw new IllegalArgumentException("Unknown order command type: " + type);
         }

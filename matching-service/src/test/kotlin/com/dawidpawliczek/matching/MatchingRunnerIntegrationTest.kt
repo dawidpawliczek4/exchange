@@ -1,5 +1,6 @@
 package com.dawidpawliczek.matching
 
+import com.dawidpawliczek.contracts.Asset
 import com.dawidpawliczek.contracts.Side
 import com.dawidpawliczek.contracts.Topics
 import com.dawidpawliczek.contracts.Trade
@@ -11,6 +12,7 @@ import com.dawidpawliczek.contracts.event.AccountEvent
 import com.dawidpawliczek.contracts.event.AccountEventCodec
 import com.dawidpawliczek.contracts.event.DepositAccepted
 import com.dawidpawliczek.contracts.event.MarketEventCodec
+import com.dawidpawliczek.contracts.event.OrderRejected
 import com.dawidpawliczek.contracts.event.TradeEvent
 import org.apache.kafka.clients.admin.Admin
 import org.apache.kafka.clients.admin.NewTopic
@@ -155,15 +157,21 @@ class MatchingRunnerIntegrationTest {
         quantity: Long,
     ) = PlaceOrderCommand(2, Side.BUY, price, false, quantity)
 
+    private fun seeds() =
+        arrayOf<OrderCommand>(
+            DepositCommand(1, Asset.BASE, 1_000_000),
+            DepositCommand(2, Asset.QUOTE, 1_000_000),
+        )
+
     @Test
     fun noDuplicatesAfterLostCommit() {
         createTopics()
         val journal = dir.resolve("journal.bin")
-        produceCommands(sell(100, 5), sell(101, 5), buy(100, 5))
+        produceCommands(*seeds(), sell(100, 5), sell(101, 5), buy(100, 5))
 
         MatchingRunner(kafka.bootstrapServers, journal).use { runner ->
             runner.start()
-            awaitUntil("runner1 processed offsets 0..2") { runner.lastSourceOffset() == 2L }
+            awaitUntil("runner1 processed offsets 0..4") { runner.lastSourceOffset() == 4L }
         }
 
         admin().use {
@@ -176,8 +184,8 @@ class MatchingRunnerIntegrationTest {
         MatchingRunner(kafka.bootstrapServers, journal).use { runner ->
             runner.start()
             produceCommands(buy(101, 5))
-            awaitUntil("runner2 committed offset 4") { committedOffset() == 4L }
-            assertEquals(3L, runner.lastSourceOffset())
+            awaitUntil("runner2 committed offset 6") { committedOffset() == 6L }
+            assertEquals(5L, runner.lastSourceOffset())
         }
 
         val trades = readAllTrades()
@@ -193,12 +201,12 @@ class MatchingRunnerIntegrationTest {
     @Test
     fun startsFromEarliestWhenWalEmpty() {
         createTopics()
-        produceCommands(sell(100, 5), buy(100, 5))
+        produceCommands(*seeds(), sell(100, 5), buy(100, 5))
 
         MatchingRunner(kafka.bootstrapServers, dir.resolve("journal.bin")).use { runner ->
             runner.start()
-            awaitUntil("runner committed offset 2") { committedOffset() == 2L }
-            assertEquals(1L, runner.lastSourceOffset())
+            awaitUntil("runner committed offset 4") { committedOffset() == 4L }
+            assertEquals(3L, runner.lastSourceOffset())
         }
 
         assertEquals(listOf(Trade(0, 1, 1, 2, 100, 5)), readAllTrades())
@@ -207,7 +215,7 @@ class MatchingRunnerIntegrationTest {
     @Test
     fun depositReachesAccountTopicKeyedByUser() {
         createTopics()
-        produceCommands(DepositCommand(42, 1000))
+        produceCommands(DepositCommand(42, Asset.QUOTE, 1000))
 
         MatchingRunner(kafka.bootstrapServers, dir.resolve("journal.bin")).use { runner ->
             runner.start()
@@ -220,6 +228,26 @@ class MatchingRunnerIntegrationTest {
         assertEquals("42", key)
         val accepted = event as DepositAccepted
         assertEquals(42L, accepted.userId())
+        assertEquals(Asset.QUOTE, accepted.asset())
         assertEquals(1L, accepted.seq())
+    }
+
+    @Test
+    fun nsfOrderEmitsOrderRejectedOnAccountTopic() {
+        createTopics()
+        produceCommands(buy(100, 5))
+
+        MatchingRunner(kafka.bootstrapServers, dir.resolve("journal.bin")).use { runner ->
+            runner.start()
+            awaitUntil("runner committed offset 1") { committedOffset() == 1L }
+        }
+
+        assertEquals(emptyList<Trade>(), readAllTrades())
+        val records = readAllAccountEvents()
+        assertEquals(1, records.size)
+        val (key, event) = records.first()
+        assertEquals("2", key)
+        val rejected = event as OrderRejected
+        assertEquals(2L, rejected.userId())
     }
 }

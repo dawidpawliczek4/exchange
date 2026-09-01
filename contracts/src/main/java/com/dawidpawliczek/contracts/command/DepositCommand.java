@@ -1,3 +1,5 @@
 package com.dawidpawliczek.contracts.command;
 
-public record DepositCommand(long userId, long quantity) implements OrderCommand {}
+import com.dawidpawliczek.contracts.Asset;
+
+public record DepositCommand(long userId, Asset asset, long quantity) implements OrderCommand {}

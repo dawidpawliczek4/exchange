@@ -5,6 +5,18 @@ classes are introduced, how `OrderService` changes, and how it all survives a re
 Scope: **spot MVP** — margin, liquidations, and the backstop arrive with the perp
 (PERP-1 revisits the decisions in this document).
 
+> **Implementation status (2026-08-31):** LED-2/LED-3 are done; the code deviates from
+> this document in three recorded ways. (1) **L5 is superseded by
+> [ADR-0005](adr/0005-nsf-verdict-at-apply.md)**: every command is WAL-appended, the
+> NSF verdict happens at apply — check-before-append breaks determinism on in-batch
+> dependencies. (2) **Accounts have no `reserved` field**: reservations are implicit
+> (reserve subtracts from the balance, release adds back), taking L3's "the book is the
+> reservation registry" literally; I3 becomes a cross-system conservation check instead
+> of a per-account aggregate comparison. (3) **`OrderRejected` is an `AccountEvent` on
+> `account.events`** (resolving §9's open question), not a `MarketEvent`; there is no
+> `BalanceChangedEvent` yet (LED-4). Treasury/mint (L7) and the gateway seed (L8) are
+> still open; deposits currently mint from outside.
+
 ---
 
 ## 1. Role and place in the architecture

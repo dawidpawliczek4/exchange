@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.dawidpawliczek.contracts.Asset;
 import com.dawidpawliczek.contracts.Side;
 import com.dawidpawliczek.engine.domain.Order;
 import org.junit.jupiter.api.Test;
@@ -39,12 +40,13 @@ class WalCodecTest {
 
     @Test
     void depositRoundTrip() {
-        var encoded = WalCodec.encodeDeposit(1, 1500, 7_000_000_123L);
-        assertEquals(25, encoded.length);
+        var encoded = WalCodec.encodeDeposit(1, Asset.BASE, 1500, 7_000_000_123L);
+        assertEquals(26, encoded.length);
 
         var decoded = assertInstanceOf(DepositRecord.class, WalCodec.decode(encoded));
         assertEquals(1500, decoded.quantity());
         assertEquals(1, decoded.userId());
+        assertEquals(Asset.BASE, decoded.asset());
         assertEquals(7_000_000_123L, decoded.sourceOffset());
     }
 

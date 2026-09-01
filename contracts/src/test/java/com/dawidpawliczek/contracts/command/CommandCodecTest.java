@@ -3,6 +3,7 @@ package com.dawidpawliczek.contracts.command;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.dawidpawliczek.contracts.Asset;
 import com.dawidpawliczek.contracts.Side;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +29,13 @@ class CommandCodecTest {
 
     @Test
     void depositCommandRoundTrip() {
-        var cmd = new DepositCommand(42, 99);
+        var cmd = new DepositCommand(42, Asset.QUOTE, 99);
+        assertEquals(cmd, CommandCodec.decode(CommandCodec.encode(cmd)));
+    }
+
+    @Test
+    void depositCommandRoundTripBase() {
+        var cmd = new DepositCommand(42, Asset.BASE, 99);
         assertEquals(cmd, CommandCodec.decode(CommandCodec.encode(cmd)));
     }
 

@@ -39,7 +39,8 @@ services depend on `:engine`/`:contracts`; nothing depends on the services.
 
 All Kafka topics carry raw `byte[]` values keyed by `String`; there is no JSON/Avro on
 the wire (a protobuf migration is planned but not done). Root package holds the shared
-types (`Side`, `Trade`, `CancelStatus`, `Topics` with `orders.commands` /
+types (`Side`, `Trade`, `CancelStatus`, `Asset` (`QUOTE` = cash / `BASE` = the traded
+token, 1 byte on the wire), `RejectReason`, `Topics` with `orders.commands` /
 `orders.trades` / `account.events`); the codecs live in per-direction subpackages:
 
 **`contracts.command`** — sealed `OrderCommand` (`PlaceOrderCommand`,
@@ -50,7 +51,7 @@ Fixed-width, first byte is the type tag:
 |---|---|---|---|
 | place | 0 | 27B | `[1B type][8B userId][1B side][8B price][1B market][8B qty]` |
 | cancel | 1 | 17B | `[1B type][8B userId][8B id]` |
-| deposit | 2 | 17B | `[1B type][8B userId][8B quantity]` |
+| deposit | 2 | 18B | `[1B type][8B userId][1B asset][8B quantity]` |
 
 **`contracts.event`** — sealed `MarketEvent` (`TradeEvent`, `CancelEvent`; both carry
 `seq()` and `timestamp()`) + `MarketEventCodec` for the `orders.trades` topic. 17B header
@@ -65,12 +66,15 @@ Despite its name, `orders.trades` carries the union of trade *and* cancel events
 the market-event stream, not a trades-only topic.
 
 Alongside `MarketEvent` sits the sealed `AccountEvent` (`DepositAccepted`,
-`DepositRejected`; `seq()`, `timestamp()`, `userId()`) + `AccountEventCodec` for the
-`account.events` topic — the **private** per-user stream, deliberately separate from the
-public market feed. Same 17B header, body is currently just `[8B userId]` (25B total,
-types 0 = accepted, 1 = rejected). Records are keyed by `userId` (per-user ordering via
-the default partitioner), where `orders.trades` uses a constant key. `AccountEvent.seq`
-comes from the `Ledger`'s own counter — a numbering stream independent of the book's.
+`DepositRejected`, `OrderRejected`; `seq()`, `timestamp()`, `userId()`) +
+`AccountEventCodec` for the `account.events` topic — the **private** per-user stream,
+deliberately separate from the public market feed. Same 17B header, 9B body (26B total):
+deposits carry `[8B userId][1B asset]` (types 0 = accepted, 1 = rejected),
+`OrderRejected` carries `[8B userId][1B reason]` (type 2; `RejectReason.NSF` for both
+insufficient funds and unpriceable orders). Records are keyed by `userId` (per-user
+ordering via the default partitioner), where `orders.trades` uses a constant key.
+`AccountEvent.seq` comes from the `Ledger`'s own counter — a numbering stream
+independent of the book's.
 
 Changing a record's fields means changing the corresponding codec's byte layout in
 lockstep; codec round-trips are covered by `CommandCodecTest` / `MarketEventCodecTest` /
@@ -84,8 +88,12 @@ Price-time-priority limit order book: two `NavigableMap<Long, Deque<Order>>` (`T
 bids reverse-ordered). `submit(Order)` matches against the opposite side while prices
 cross, emits one `TradeEvent` per fill at the resting price, and rests any remainder
 (market orders never rest — the unfilled remainder is dropped). `cancel(orderId, userId)`
-is a linear scan over both sides and always returns a `CancelEvent` — `CANCELED` if the
-order was found and removed, `REJECTED` otherwise.
+is a linear scan over both sides and returns a `CancelResult`: the `CancelEvent`
+(`CANCELED` if the order was found and removed, `REJECTED` otherwise) plus the removed
+`Order` itself (`null` on reject) — the domain fact the ledger release is computed from.
+`calculateMarketOrderValue(qty)` walks the asks and prices the executable part of a
+market buy (overflow → `-1`, treated as unaffordable); it is a read-only query, the book
+knows nothing about the ledger.
 
 The book stamps every event with a monotonically increasing `seq` and a timestamp from an
 injectable `LongSupplier clock` (defaults to `System::currentTimeMillis`) — that is the
@@ -110,12 +118,20 @@ One `matching-writer` thread drains batches and, per batch:
 1. **Dedup** — any job whose `sourceOffset <= watermark` completes immediately
    (idempotent re-apply after seek/restart).
 2. **WAL append** — every surviving command is encoded (`WalCodec`) and appended to the
-   `CommandLog`. Order ids are assigned here, before logging, so replay reproduces them.
+   `CommandLog`, unconditionally — including places that will fail the funds check
+   ([ADR-0005](adr/0005-nsf-verdict-at-apply.md)). Order ids are assigned here, before
+   logging, so replay reproduces them.
 3. **`sync()`** — one fsync per batch (group commit), then the source-offset watermark
    advances.
-4. **Apply + publish** — only now does each command take effect: orders hit the book
-   (events → `MarketFeedSink`), deposits hit the ledger (events → `AccountFeedSink`),
-   then each caller's future completes.
+4. **Apply + publish** — only now does each command take effect, through one shared
+   `apply` path (also used by `recover()`): a place reserves funds first (BUY: `price ×
+   qty` cash, market BUY priced from the book; SELL: `qty` of the token) — on failure
+   the engine emits a private `OrderRejected` and the book is never touched; on success
+   the order hits the book, each fill settles both legs (plus a price-improvement
+   release for a taker-buyer's limit), a market order's unfilled remainder is released;
+   a cancel releases the remainder's reservation; a deposit credits the ledger. Market
+   events → `MarketFeedSink`, account events → `AccountFeedSink`, then each caller's
+   future completes.
 
 WAL-before-match is the core invariant: a command is durable before it can have any
 effect, so replaying the WAL rebuilds the exact book state. Any exception in the writer
@@ -140,7 +156,7 @@ encoded by `WalCodec`; the leading byte is the record kind:
 |---|---|---|---|
 | cancel | 0 | 25B | `[1B tag][8B sourceOffset][8B orderId][8B userId]` |
 | place | 1 | 43B | `[1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
-| deposit | 2 | 25B | `[1B tag][8B sourceOffset][8B quantity][8B userId]` |
+| deposit | 2 | 26B | `[1B tag][8B sourceOffset][8B userId][1B asset][8B quantity]` |
 
 The tag byte was repurposed from "version" to "record kind" without breaking layout: kind
 1 is byte-identical to the old single-format place record, so pre-cancel journals still
@@ -151,23 +167,31 @@ incompatible format change means wiping the journal volume
 Every record carries the Kafka offset of the command it came from — see
 [Durability and recovery](#durability-and-recovery).
 
-### Ledger / deposit flow
+### Ledger
 
-The deposit flow (per [ADR-0001](adr/0001-ledger-in-hot-path.md): balances in the
-single-writer hot path; full design in [ledger-design.md](ledger-design.md)) is complete
-and crash-safe inside the engine. `Ledger` holds `HashMap<Long, Wallet>` (`Wallet` =
-single `cash` balance; one currency for now) with its own event `seq` counter and
-injectable clock, mirroring `OrderBook`. `deposit(userId, quantity)` credits the wallet
-(`computeIfAbsent`) and returns `DepositAccepted`, or `DepositRejected` for
-`quantity <= 0` and for balance overflow — both checks deterministic, so replay decides
-identically. In `processBatch` a `DepositCommand` is WAL-appended as a kind-2 record
-like any command, applied to the ledger in the apply phase, and its events go out
-through `AccountFeedSink` → `account.events`; on recovery the record replays into
-`Ledger.deposit` (rebuilding balances and the ledger `seq`, publishing nothing) and its
-offset feeds the watermark. `reserve/release/settle` are still empty stubs — wiring the
-ledger into place/cancel is the next step. Outside the engine the flow is not reachable
-yet: no gateway endpoint produces `DepositCommand`s, and nothing consumes
-`account.events`.
+The ledger (per [ADR-0001](adr/0001-ledger-in-hot-path.md): balances in the
+single-writer hot path; design history in [ledger-design.md](ledger-design.md)) is
+complete inside the engine: deposits, reservations on place, settlement on trade,
+releases on cancel, NSF rejections — all crash-safe through the shared apply path.
+
+`Ledger` holds `HashMap<Long, Wallet>` (`Wallet` = `cash` + `asset` balance, one spot
+pair) with its own event `seq` counter and injectable clock, mirroring `OrderBook`.
+Reservations are **implicit**: `reserveCash/reserveAsset` subtract from the balance
+(returning `false` — never throwing — on insufficient or negative amounts),
+`releaseCash/releaseAsset` add back, and `settle(buyer, seller, price, qty)` credits
+only the receiving legs (the paying legs were taken at reserve time). There is no
+`reserved` field — the book itself is the reservation registry (design decision L3):
+the reserved amount is derivable as `remaining × limit` over open orders. Tests
+therefore verify by exact balance arithmetic per scenario; a generic cross-system
+conservation property (`Σ balances + Σ book reservations = Σ accepted deposits`) is the
+planned property-test oracle (see `docs/testing.md` backlog).
+
+Deterministic rejections (`DepositRejected` for `quantity <= 0`/overflow,
+`OrderRejected` for NSF/unpriceable) mean replay decides identically —
+[ADR-0005](adr/0005-nsf-verdict-at-apply.md) covers why rejected places still reach the
+WAL. Outside the engine the flow is not reachable yet: no gateway endpoint produces
+`DepositCommand`s and nothing consumes `account.events` (tests seed balances by
+producing deposits directly).
 
 ## `:matching-service` — hosting the engine
 
@@ -228,9 +252,11 @@ Kafka log decouples producers/consumers and gives replay to downstream consumers
 engine's own WAL gives deterministic single-threaded state reconstruction. The Kafka
 offset stored in every WAL record stitches them together idempotently.
 
-On startup `OrderService.recover()` replays the WAL in order — re-submitting each place
-and re-applying each cancel — rebuilding the book, the id counter, and the source-offset
-watermark *before* the writer thread starts. On (re)assignment the consumer seeks to
+On startup `OrderService.recover()` replays the WAL in order through the **same `apply`
+path as live processing** — re-running each place's reserve/match/settle (reproducing
+NSF rejections, [ADR-0005](adr/0005-nsf-verdict-at-apply.md)), each cancel's release,
+and each deposit — rebuilding book, ledger, id counter, and the source-offset watermark
+*before* the writer thread starts; replayed events are discarded, never republished. On (re)assignment the consumer seeks to
 `lastSourceOffset() + 1`, so commands that were WAL-synced but whose offset commit was
 lost in a crash are not re-consumed; the engine additionally drops any command whose
 offset is `<= watermark` (idempotent apply), covering re-delivery inside one process
