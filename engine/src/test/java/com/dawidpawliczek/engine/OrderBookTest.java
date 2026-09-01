@@ -96,7 +96,8 @@ public class OrderBookTest {
         var trades = ob.submit(new Order(2, 30, Side.SELL, 0, true, 8));
         assertEquals(List.of(new TradeEvent(1, 0, new Trade(1, 10, 2, 30, 100, 5))), trades);
 
-        assertTrue(ob.submit(new Order(3, 40, Side.BUY, Long.MAX_VALUE, false, 1)).isEmpty());
+        assertTrue(
+                ob.submit(new Order(3, 40, Side.BUY, Long.MAX_VALUE, false, 1)).isEmpty());
     }
 
     @Test
