@@ -8,7 +8,7 @@ single-writer engine, and durability/recovery. For how to *run* it, see
 ## System flow
 
 ```
-gateway (:app)
+gateway (:app) · bot crowd (:agent-crowd)
   → Kafka orders.commands
   → matching-service  [decode → OrderService (WAL → match/ledger) → events]
   → Kafka orders.trades   (market events) → gateway → /marketdata WebSocket
@@ -27,12 +27,13 @@ Kafka/HTTP.
 | `:engine` | Java (`java-library`) | Matching core: order book, single-writer service, WAL codec |
 | `:matching-service` | Kotlin (application) | Hosts the engine off Kafka; owns metrics |
 | `:app` | Kotlin + Spring Boot 4 | Gateway: REST + JWT in, WebSocket market data out |
+| `:agent-crowd` | Kotlin (application) | Bot crowd: seeded zero-intelligence traders producing straight to Kafka |
 | `:benchmark` | Java + JMH | Engine measurement harnesses ([benchmarking.md](benchmarking.md)) |
 | `:e2e` | Kotlin (tests only) | Full-stack test: Testcontainers Kafka + Postgres, gateway + runner in-process |
 
 Dependency rules: `:engine` depends on `:contracts` via `api` (not `implementation`)
 because contract types appear in the engine's public API (`OrderCommand` in
-`OrderService.submit`, `MarketEvent`/`AccountEvent` in the sink ports). Both
+`OrderService.submit`, `MarketEvent`/`AccountEvent` in the sink ports). The
 services depend on `:engine`/`:contracts`; nothing depends on the services.
 
 ## `:contracts` — the wire
@@ -243,6 +244,34 @@ Package root is `com.dawidpawliczek.app`; source directories under
 - **Market data** (`marketData/`): `KafkaMarketFeedSubscriber` consumes `orders.trades`
   (unique group id per instance, `auto-offset-reset: latest`) and fans events out over
   the `/marketdata` WebSocket via `WebSocketBroadcaster`.
+
+## `:agent-crowd` — the bot crowd
+
+The algorithmic crowd from the thesis plan (D11: one process, virtual threads, ABIDES
+proportions; D12: same port for Kafka and in-process modes). What exists is the first
+cut — zero-intelligence traders only, Kafka mode only, no port abstraction yet.
+
+`AgentCrowd.kt` (`main`) spawns `BOT_COUNT` `ZeroIntelligenceBot`s, one virtual thread
+each, sharing a single idempotent `KafkaProducer`. A bot first funds itself with two
+`DepositCommand`s (1 000 000 000 QUOTE, 1 000 000 BASE — large enough that NSF never
+fires) and then loops: random limit order (side 50/50, price uniform in
+`[MID_PRICE − PRICE_BAND, MID_PRICE + PRICE_BAND]`, quantity 1–10), sleep 50–500 ms.
+Deposits land before the bot's orders because one producer on one partition preserves
+order. Records are unkeyed, like the gateway's. Bot `userId`s start at 1 000 000 so they
+never collide with users registered through the gateway — the crowd bypasses the gateway
+and JWT altogether, so it needs no Postgres.
+
+Determinism: `SEED` seeds one `SplittableRandom`; each bot gets its own `split()`, so
+the same seed reproduces the same per-bot decision sequence regardless of scheduling.
+(The resulting market is still not bit-reproducible — inter-arrival timing on real
+threads is not.)
+
+Known gap before a market maker: bots never learn the ids of their resting orders.
+`PlaceOrderCommand` carries no id, the engine assigns one, and only `Trade`
+(maker/taker ids) and `CancelEvent` expose it — an order that never trades has an id its
+owner cannot know, so it cannot be cancelled. The intended fix is an
+`OrderAccepted(userId, orderId)` variant on `account.events`, which the crowd would be
+the first consumer of (it also needs `OrderRejected` there).
 
 ## Durability and recovery
 

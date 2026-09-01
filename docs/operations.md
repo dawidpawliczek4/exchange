@@ -10,11 +10,15 @@ description. The Gradle/Compose commands below are what the recipes expand to.
 docker compose -f devops/docker-compose.yml up -d kafka postgres
 ./gradlew :matching-service:run     # plain JVM app, Kafka at localhost:9092
 ./gradlew :app:bootRun              # Spring gateway on :8080
+./gradlew :agent-crowd:run          # bot crowd, Kafka only; runs until Ctrl+C
 ```
 
 The gateway needs **both** Kafka and Postgres: Flyway runs `V1__init.sql` and Hibernate
 validates the schema at boot. The matching service needs only Kafka and writes its WAL to
-`./journal.bin` in the working directory.
+`./journal.bin` in the working directory. The crowd needs only Kafka (and a running
+matching service to trade against); it is not part of the Compose stack or the k8s
+manifests yet, so this is the only way to run it. Crowd knobs, all env vars with
+defaults: `BOT_COUNT` (100), `MID_PRICE` (10000), `PRICE_BAND` (100), `SEED` (42).
 
 Build/test:
 
@@ -44,11 +48,12 @@ Five named volumes: `journal`, `pgdata`, `kafkadata`, `promdata`, `grafanadata`.
 journal volume is why the book survives container restarts — and why upgrading across an
 incompatible WAL format change requires `just compose-reset` (or `down -v`).
 
-Kafka bootstrap overrides (both default to `localhost:9092`):
+Kafka bootstrap overrides (all default to `localhost:9092`):
 
 | Service | Env var |
 |---|---|
 | matching service | `KAFKA_BOOTSTRAP_SERVERS` |
+| agent crowd | `KAFKA_BOOTSTRAP_SERVERS` |
 | gateway | `SPRING_KAFKA_BOOTSTRAP_SERVERS` |
 
 Gateway database config: `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD`

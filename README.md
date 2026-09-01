@@ -17,6 +17,7 @@ I wanted to understand two things:
 | `:engine` |  Java            | The core.                         |
 | `:matching-service` | Kotlin               | Runs the engine off Kafka.        |
 | `:app` | Kotlin + Spring Boot | Gateway: REST in, trades out.     |
+| `:agent-crowd` | Kotlin               | Bot crowd trading via Kafka.      |
 | `:benchmark` | Java + JMH           | Measures the engine.              |
 | `:e2e` | Kotlin               | Full-stack test (Testcontainers). |
 
@@ -78,6 +79,7 @@ from Gradle (Kafka defaults to `localhost:9092`):
 docker compose -f devops/docker-compose.yml up -d kafka postgres
 ./gradlew :matching-service:run   # needs Kafka
 ./gradlew :app:bootRun            # needs Kafka and Postgres
+./gradlew :agent-crowd:run        # bot crowd; needs Kafka and a running matching service
 ```
 
 ## Kubernetes
