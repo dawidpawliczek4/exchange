@@ -11,16 +11,15 @@ COPY matching-service/build.gradle.kts matching-service/
 COPY agent-crowd/build.gradle.kts agent-crowd/
 COPY benchmark/build.gradle.kts benchmark/
 COPY e2e/build.gradle.kts e2e/
-RUN ./gradlew --no-daemon :matching-service:dependencies
+RUN ./gradlew --no-daemon :agent-crowd:dependencies
 
 COPY contracts contracts
 COPY engine engine
-COPY matching-service matching-service
-RUN ./gradlew --no-daemon :matching-service:installDist
+COPY agent-crowd agent-crowd
+RUN ./gradlew --no-daemon :agent-crowd:installDist
 
 FROM eclipse-temurin:25-jre AS runtime
-RUN useradd --system --uid 10001 appuser && mkdir /data && chown appuser:appuser /data
-COPY --from=builder /build/matching-service/build/install/matching-service/ /opt/matching/
-WORKDIR /data
+RUN useradd --system --uid 10001 appuser
+COPY --from=builder /build/agent-crowd/build/install/agent-crowd/ /opt/agent-crowd/
 USER appuser
-ENTRYPOINT ["/opt/matching/bin/matching-service"]
+ENTRYPOINT ["/opt/agent-crowd/bin/agent-crowd"]

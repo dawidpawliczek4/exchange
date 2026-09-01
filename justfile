@@ -22,7 +22,7 @@ clean:
 
 # --- Docker Compose (local stack) --------------------------------------------
 
-# Bring up the whole stack (Kafka + matching + gateway)
+# Bring up the whole stack (Kafka + matching + gateway + bot crowd)
 compose-up:
     docker compose -f devops/docker-compose.yml up -d --build
 

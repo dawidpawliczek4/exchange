@@ -32,7 +32,8 @@ benchmarking, and the decision records ([ADRs](docs/adr/README.md)).
 
 ## Running it
 
-Brings up Kafka, the matching service, and the gateway (requires Docker):
+Brings up Kafka, the matching service, the gateway, and the bot crowd — so the book is
+live immediately (requires Docker):
 
 ```bash
 docker compose -f devops/docker-compose.yml up -d --build

@@ -63,6 +63,22 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  crowd:
+    build:
+      context: ..
+      dockerfile: devops/agent-crowd.Dockerfile
+    container_name: crowd
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      BOT_COUNT: ${BOT_COUNT:-100}
+      MID_PRICE: ${MID_PRICE:-10000}
+      PRICE_BAND: ${PRICE_BAND:-100}
+      SEED: ${SEED:-42}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: on-failure
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: prometheus

@@ -16,9 +16,8 @@ docker compose -f devops/docker-compose.yml up -d kafka postgres
 The gateway needs **both** Kafka and Postgres: Flyway runs `V1__init.sql` and Hibernate
 validates the schema at boot. The matching service needs only Kafka and writes its WAL to
 `./journal.bin` in the working directory. The crowd needs only Kafka (and a running
-matching service to trade against); it is not part of the Compose stack or the k8s
-manifests yet, so this is the only way to run it. Crowd knobs, all env vars with
-defaults: `BOT_COUNT` (100), `MID_PRICE` (10000), `PRICE_BAND` (100), `SEED` (42).
+matching service to trade against). Crowd knobs, all env vars with defaults:
+`BOT_COUNT` (100), `MID_PRICE` (10000), `PRICE_BAND` (100), `SEED` (42).
 
 Build/test:
 
@@ -31,18 +30,26 @@ just build / just test / just clean
 ## Docker Compose (full local stack)
 
 ```bash
-just compose-up       # kafka + matching + gateway + postgres + prometheus + grafana
+just compose-up       # kafka + matching + gateway + crowd + postgres + prometheus + grafana
 just demo             # register a user, post two crossing orders (needs jq)
 just compose-down     # stop, keep volumes
 just compose-reset    # stop and wipe ALL volumes — journal, pgdata, kafkadata
 ```
 
-Six services (`devops/docker-compose.yml`, project name `exchange`): Kafka
+Seven services (`devops/docker-compose.yml`, project name `exchange`): Kafka
 (`apache/kafka`, KRaft single node, host port 9092 / internal `kafka:29092`), `matching`
 (built from `devops/matching-service.Dockerfile`, metrics on 9400, WAL on the `journal`
 volume at `/data`, `restart: on-failure`), `gateway` (`devops/app.Dockerfile`, :8080,
-waits for Kafka + Postgres healthchecks), `postgres` (:5432, db/user/password all
-`exchange`), `prometheus` (:9090), `grafana` (:3000, anonymous viewer).
+waits for Kafka + Postgres healthchecks), `crowd` (`devops/agent-crowd.Dockerfile`, no
+ports or volumes, `restart: on-failure`; the bot crowd trades from the moment the stack
+is up), `postgres` (:5432, db/user/password all `exchange`), `prometheus` (:9090),
+`grafana` (:3000, anonymous viewer).
+
+The crowd's knobs are interpolated from the shell with the same defaults as the app, so
+`BOT_COUNT=1000 just compose-up` (or `MID_PRICE`, `PRICE_BAND`, `SEED`) reconfigures it
+without editing the file. Because the bots quote around `MID_PRICE`, `just demo`'s
+orders at price 100 now trade against bot bids rather than self-matching. The crowd is
+not in the k8s manifests yet.
 
 Five named volumes: `journal`, `pgdata`, `kafkadata`, `promdata`, `grafanadata`. The
 journal volume is why the book survives container restarts — and why upgrading across an
