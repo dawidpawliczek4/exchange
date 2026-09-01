@@ -224,9 +224,8 @@ heartbeat touch every 5s when a heartbeat path is configured (container liveness
 
 ## `:app` — the gateway
 
-Package root is `com.dawidpawliczek.app`, but source directories under `src/main/kotlin/`
-do **not** mirror the package (e.g. `src/main/kotlin/auth/` holds
-`com.dawidpawliczek.app.auth`) — don't let the IDE "fix" this silently.
+Package root is `com.dawidpawliczek.app`; source directories under
+`src/main/kotlin/com/dawidpawliczek/app/` mirror it (as do the tests).
 
 - **Orders** (`order/`, hexagonal: `adapter/inbound|outbound`, `application/port|service`):
   `OrderController` (`POST /order`, `DELETE /order/{id}`) validates and hands to
