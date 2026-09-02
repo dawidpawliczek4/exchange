@@ -9,20 +9,22 @@ public final class WalCodec {
 
     private WalCodec() {}
 
-    // cancel (tag 0, 25B): [1B tag][8B sourceOffset][8B orderId][8B userId]
-    // place  (tag 1, 43B): [1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]
-    // deposit (tag 2, 26B): [1B tag][8B sourceOffset][8B userId][1B asset][8B quantity]
+    // cancel  (tag 0, 33B): [1B tag][8B sourceOffset][8B timestamp][8B orderId][8B userId]
+    // place   (tag 1, 51B): [1B tag][8B sourceOffset][8B timestamp][8B id][8B userId][1B side][8B price][1B market][8B
+    // qty]
+    // deposit (tag 2, 34B): [1B tag][8B sourceOffset][8B timestamp][8B userId][1B asset][8B quantity]
     private static final byte TAG_CANCEL = 0;
     private static final byte TAG_PLACE = 1;
     private static final byte TAG_DEPOSIT = 2;
-    private static final int CANCEL_SIZE = 1 + 8 + 8 + 8;
-    private static final int PLACE_SIZE = 1 + 8 + 8 + 8 + 1 + 8 + 1 + 8;
-    private static final int DEPOSIT_SIZE = 1 + 8 + 8 + 1 + 8;
+    private static final int CANCEL_SIZE = 1 + 8 + 8 + 8 + 8;
+    private static final int PLACE_SIZE = 1 + 8 + 8 + 8 + 8 + 1 + 8 + 1 + 8;
+    private static final int DEPOSIT_SIZE = 1 + 8 + 8 + 8 + 1 + 8;
 
-    public static byte[] encode(Order o, long sourceOffset) {
+    public static byte[] encode(Order o, long sourceOffset, long timestamp) {
         ByteBuffer b = ByteBuffer.allocate(PLACE_SIZE);
         b.put(TAG_PLACE);
         b.putLong(sourceOffset);
+        b.putLong(timestamp);
         b.putLong(o.id());
         b.putLong(o.userId());
         b.put((byte) (o.side() == Side.SELL ? 0 : 1));
@@ -32,20 +34,22 @@ public final class WalCodec {
         return b.array();
     }
 
-    public static byte[] encodeDeposit(long userId, Asset asset, long quantity, long sourceOffset) {
+    public static byte[] encodeDeposit(long userId, Asset asset, long quantity, long sourceOffset, long timestamp) {
         ByteBuffer b = ByteBuffer.allocate(DEPOSIT_SIZE);
         b.put(TAG_DEPOSIT);
         b.putLong(sourceOffset);
+        b.putLong(timestamp);
         b.putLong(userId);
         b.put((byte) (asset == Asset.QUOTE ? 0 : 1));
         b.putLong(quantity);
         return b.array();
     }
 
-    public static byte[] encodeCancel(long orderId, long userId, long sourceOffset) {
+    public static byte[] encodeCancel(long orderId, long userId, long sourceOffset, long timestamp) {
         ByteBuffer b = ByteBuffer.allocate(CANCEL_SIZE);
         b.put(TAG_CANCEL);
         b.putLong(sourceOffset);
+        b.putLong(timestamp);
         b.putLong(orderId);
         b.putLong(userId);
         return b.array();
@@ -54,31 +58,33 @@ public final class WalCodec {
     public static WalRecord decode(byte[] payload) {
         ByteBuffer b = ByteBuffer.wrap(payload);
         byte tag = b.get();
+        if (tag < TAG_CANCEL || tag > TAG_DEPOSIT) {
+            throw new IllegalArgumentException("unsupported WAL record kind: " + tag);
+        }
+        long sourceOffset = b.getLong();
+        long timestamp = b.getLong();
         return switch (tag) {
             case TAG_PLACE -> {
-                long sourceOffset = b.getLong();
                 long id = b.getLong();
                 long userId = b.getLong();
                 Side side = b.get() == 0 ? Side.SELL : Side.BUY;
                 long price = b.getLong();
                 boolean market = b.get() == 1;
                 long quantity = b.getLong();
-                yield new PlaceRecord(new Order(id, userId, side, price, market, quantity), sourceOffset);
+                yield new PlaceRecord(new Order(id, userId, side, price, market, quantity), sourceOffset, timestamp);
             }
             case TAG_CANCEL -> {
-                long sourceOffset = b.getLong();
                 long orderId = b.getLong();
                 long userId = b.getLong();
-                yield new CancelRecord(orderId, userId, sourceOffset);
+                yield new CancelRecord(orderId, userId, sourceOffset, timestamp);
             }
             case TAG_DEPOSIT -> {
-                long sourceOffset = b.getLong();
                 long userId = b.getLong();
                 Asset asset = b.get() == 0 ? Asset.QUOTE : Asset.BASE;
                 long quantity = b.getLong();
-                yield new DepositRecord(userId, asset, quantity, sourceOffset);
+                yield new DepositRecord(userId, asset, quantity, sourceOffset, timestamp);
             }
-            default -> throw new IllegalArgumentException("unsupported WAL record kind: " + tag);
+            default -> throw new AssertionError(tag);
         };
     }
 }

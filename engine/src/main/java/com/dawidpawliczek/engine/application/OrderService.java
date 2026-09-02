@@ -21,12 +21,12 @@ import com.dawidpawliczek.engine.wire.DepositRecord;
 import com.dawidpawliczek.engine.wire.PlaceRecord;
 import com.dawidpawliczek.engine.wire.WalCodec;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 record Job(OrderCommand cmd, long sourceOffset, CompletableFuture<Void> result) {}
 
@@ -40,11 +40,14 @@ public final class OrderService {
     private final CommandLog commandLog;
     private final MarketFeedSink marketFeedSink;
     private final AccountFeedSink accountFeedSink;
+    private final LongSupplier clock;
 
     private final BlockingQueue<Job> queue = new ArrayBlockingQueue<>(1 << 16);
     private final Thread writerThread;
     private volatile boolean running = true;
     private volatile long sourceWatermark = -1;
+
+    private record Staged(Job job, Order order, long timestamp) {}
 
     public static final class EngineOverloadedException extends RuntimeException {
         public EngineOverloadedException() {
@@ -53,10 +56,21 @@ public final class OrderService {
     }
 
     public OrderService(CommandLog commandLog, MarketFeedSink marketFeedSink, AccountFeedSink accountFeedSink) {
+        this(commandLog, marketFeedSink, accountFeedSink, System::currentTimeMillis, 0, 0);
+    }
+
+    public OrderService(
+            CommandLog commandLog,
+            MarketFeedSink marketFeedSink,
+            AccountFeedSink accountFeedSink,
+            LongSupplier clock,
+            long publishedMarketSeq,
+            long publishedAccountSeq) {
         this.commandLog = commandLog;
         this.marketFeedSink = marketFeedSink;
         this.accountFeedSink = accountFeedSink;
-        recover();
+        this.clock = clock;
+        recover(publishedMarketSeq, publishedAccountSeq);
         this.writerThread = new Thread(this::writerLoop, "matching-writer");
         this.writerThread.start();
     }
@@ -118,8 +132,7 @@ public final class OrderService {
     void processBatch(List<Job> batch) {
         long maxOffset = sourceWatermark;
 
-        List<Job> applyJobs = new ArrayList<>(batch.size());
-        List<Order> applyOrders = new ArrayList<>(batch.size());
+        List<Staged> staged = new ArrayList<>(batch.size());
 
         for (Job job : batch) {
             if (job.sourceOffset() <= maxOffset) {
@@ -127,21 +140,22 @@ public final class OrderService {
                 continue;
             }
 
+            long timestamp = clock.getAsLong();
             switch (job.cmd()) {
                 case CancelOrderCommand c -> {
-                    commandLog.append(WalCodec.encodeCancel(c.id(), c.userId(), job.sourceOffset()));
-                    applyJobs.add(job);
+                    commandLog.append(WalCodec.encodeCancel(c.id(), c.userId(), job.sourceOffset(), timestamp));
+                    staged.add(new Staged(job, null, timestamp));
                 }
                 case PlaceOrderCommand c -> {
                     Order order = new Order(
                             counter.getAndIncrement(), c.userId(), c.side(), c.price(), c.market(), c.quantity());
-                    commandLog.append(WalCodec.encode(order, job.sourceOffset()));
-                    applyJobs.add(job);
-                    applyOrders.add(order);
+                    commandLog.append(WalCodec.encode(order, job.sourceOffset(), timestamp));
+                    staged.add(new Staged(job, order, timestamp));
                 }
                 case DepositCommand c -> {
-                    commandLog.append(WalCodec.encodeDeposit(c.userId(), c.asset(), c.quantity(), job.sourceOffset()));
-                    applyJobs.add(job);
+                    commandLog.append(
+                            WalCodec.encodeDeposit(c.userId(), c.asset(), c.quantity(), job.sourceOffset(), timestamp));
+                    staged.add(new Staged(job, null, timestamp));
                 }
             }
             maxOffset = job.sourceOffset();
@@ -150,23 +164,21 @@ public final class OrderService {
         commandLog.sync();
         sourceWatermark = maxOffset;
 
-        Iterator<Order> applyOrdersIterator = applyOrders.iterator();
-
-        for (Job job : applyJobs) {
+        for (Staged s : staged) {
             Applied applied =
-                    switch (job.cmd()) {
-                        case CancelOrderCommand c -> applyCancel(c.id(), c.userId());
-                        case PlaceOrderCommand _ -> applyPlace(applyOrdersIterator.next());
-                        case DepositCommand c -> applyDeposit(c.userId(), c.asset(), c.quantity());
+                    switch (s.job().cmd()) {
+                        case CancelOrderCommand c -> applyCancel(c.id(), c.userId(), s.timestamp());
+                        case PlaceOrderCommand _ -> applyPlace(s.order(), s.timestamp());
+                        case DepositCommand c -> applyDeposit(c.userId(), c.asset(), c.quantity(), s.timestamp());
                     };
 
             marketFeedSink.publish(applied.marketEvents());
             accountFeedSink.publish(applied.accountEvents());
-            job.result().complete(null);
+            s.job().result().complete(null);
         }
     }
 
-    private Applied applyPlace(Order order) {
+    private Applied applyPlace(Order order, long timestamp) {
         boolean reserved;
         if (order.quantity() <= 0 || (!order.isMarket() && order.price() <= 0)) {
             reserved = false;
@@ -179,10 +191,10 @@ public final class OrderService {
             reserved = ledger.reserveAsset(order.userId(), order.quantity());
         }
         if (!reserved) {
-            return new Applied(List.of(), List.of(ledger.orderRejected(order.userId())));
+            return new Applied(List.of(), List.of(ledger.orderRejected(order.userId(), timestamp)));
         }
 
-        List<MarketEvent> events = orderBook.submit(order);
+        List<MarketEvent> events = orderBook.submit(order, timestamp);
         for (MarketEvent event : events) {
             if (!(event instanceof TradeEvent tradeEvent)) continue;
             Trade trade = tradeEvent.trade();
@@ -199,8 +211,8 @@ public final class OrderService {
         return new Applied(events, List.of());
     }
 
-    private Applied applyCancel(long orderId, long userId) {
-        var result = orderBook.cancel(orderId, userId);
+    private Applied applyCancel(long orderId, long userId, long timestamp) {
+        var result = orderBook.cancel(orderId, userId, timestamp);
         Order cancelled = result.cancelled();
         if (cancelled != null) {
             if (cancelled.side() == Side.BUY) {
@@ -212,8 +224,8 @@ public final class OrderService {
         return new Applied(List.of(result.event()), List.of());
     }
 
-    private Applied applyDeposit(long userId, Asset asset, long quantity) {
-        return new Applied(List.of(), List.of(ledger.deposit(userId, asset, quantity)));
+    private Applied applyDeposit(long userId, Asset asset, long quantity, long timestamp) {
+        return new Applied(List.of(), List.of(ledger.deposit(userId, asset, quantity, timestamp)));
     }
 
     private static long limitCost(long price, long quantity) {
@@ -228,18 +240,28 @@ public final class OrderService {
         return ledger;
     }
 
-    private void recover() {
+    private void recover(long publishedMarketSeq, long publishedAccountSeq) {
         commandLog.replay(payload -> {
             var record = WalCodec.decode(payload);
-            switch (record) {
-                case PlaceRecord r -> {
-                    applyPlace(r.order());
-                    counter.set(r.order().id() + 1);
-                }
-                case CancelRecord r -> applyCancel(r.orderId(), r.userId());
-                case DepositRecord r -> applyDeposit(r.userId(), r.asset(), r.quantity());
-            }
+            Applied applied =
+                    switch (record) {
+                        case PlaceRecord r -> {
+                            counter.set(r.order().id() + 1);
+                            yield applyPlace(r.order(), r.timestamp());
+                        }
+                        case CancelRecord r -> applyCancel(r.orderId(), r.userId(), r.timestamp());
+                        case DepositRecord r -> applyDeposit(r.userId(), r.asset(), r.quantity(), r.timestamp());
+                    };
             sourceWatermark = Math.max(sourceWatermark, record.sourceOffset());
+
+            List<MarketEvent> market = applied.marketEvents().stream()
+                    .filter(e -> e.seq() > publishedMarketSeq)
+                    .toList();
+            if (!market.isEmpty()) marketFeedSink.publish(market);
+            List<AccountEvent> account = applied.accountEvents().stream()
+                    .filter(e -> e.seq() > publishedAccountSeq)
+                    .toList();
+            if (!account.isEmpty()) accountFeedSink.publish(account);
         });
     }
 }

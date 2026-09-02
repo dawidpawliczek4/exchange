@@ -13,54 +13,54 @@ import org.junit.jupiter.api.Test;
 
 class LedgerTest {
 
-    private final Ledger ledger = new Ledger(() -> 0L);
+    private final Ledger ledger = new Ledger();
 
     @Test
     void depositCreditsCashAndEmitsAccepted() {
-        assertEquals(new DepositAccepted(1, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 1000));
+        assertEquals(new DepositAccepted(1, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 1000, 0));
         assertEquals(1000, ledger.cashOf(42));
         assertEquals(0, ledger.assetOf(42));
     }
 
     @Test
     void depositCreditsAssetIndependentlyOfCash() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
-        assertEquals(new DepositAccepted(2, 0, 42, Asset.BASE), ledger.deposit(42, Asset.BASE, 7));
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
+        assertEquals(new DepositAccepted(2, 0, 42, Asset.BASE), ledger.deposit(42, Asset.BASE, 7, 0));
         assertEquals(1000, ledger.cashOf(42));
         assertEquals(7, ledger.assetOf(42));
     }
 
     @Test
     void depositsAccumulatePerUser() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
-        assertEquals(new DepositAccepted(2, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 500));
-        ledger.deposit(7, Asset.QUOTE, 300);
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
+        assertEquals(new DepositAccepted(2, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 500, 0));
+        ledger.deposit(7, Asset.QUOTE, 300, 0);
         assertEquals(1500, ledger.cashOf(42));
         assertEquals(300, ledger.cashOf(7));
     }
 
     @Test
     void zeroQuantityIsRejected() {
-        assertEquals(new DepositRejected(1, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 0));
+        assertEquals(new DepositRejected(1, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 0, 0));
         assertEquals(0, ledger.cashOf(42));
     }
 
     @Test
     void negativeQuantityIsRejected() {
-        assertEquals(new DepositRejected(1, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, -5));
+        assertEquals(new DepositRejected(1, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, -5, 0));
         assertEquals(0, ledger.cashOf(42));
     }
 
     @Test
     void overflowIsRejectedAndBalanceUntouched() {
-        ledger.deposit(42, Asset.QUOTE, Long.MAX_VALUE);
-        assertEquals(new DepositRejected(2, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 1));
+        ledger.deposit(42, Asset.QUOTE, Long.MAX_VALUE, 0);
+        assertEquals(new DepositRejected(2, 0, 42, Asset.QUOTE), ledger.deposit(42, Asset.QUOTE, 1, 0));
         assertEquals(Long.MAX_VALUE, ledger.cashOf(42));
     }
 
     @Test
     void reserveTakesFromBalanceAndReleaseRestoresIt() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
         assertTrue(ledger.reserveCash(42, 400));
         assertEquals(600, ledger.cashOf(42));
         ledger.releaseCash(42, 400);
@@ -69,7 +69,7 @@ class LedgerTest {
 
     @Test
     void reserveBeyondBalanceFailsWithoutChanges() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
         assertFalse(ledger.reserveCash(42, 1001));
         assertEquals(1000, ledger.cashOf(42));
     }
@@ -82,8 +82,8 @@ class LedgerTest {
 
     @Test
     void negativeReserveFailsWithoutCrediting() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
-        ledger.deposit(42, Asset.BASE, 1000);
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
+        ledger.deposit(42, Asset.BASE, 1000, 0);
         assertFalse(ledger.reserveCash(42, -5));
         assertFalse(ledger.reserveAsset(42, -5));
         assertEquals(1000, ledger.cashOf(42));
@@ -92,8 +92,8 @@ class LedgerTest {
 
     @Test
     void reserveAssetTakesFromAssetOnly() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
-        ledger.deposit(42, Asset.BASE, 10);
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
+        ledger.deposit(42, Asset.BASE, 10, 0);
         assertTrue(ledger.reserveAsset(42, 4));
         assertEquals(6, ledger.assetOf(42));
         assertEquals(1000, ledger.cashOf(42));
@@ -101,8 +101,8 @@ class LedgerTest {
 
     @Test
     void settleCreditsReceivingLegsOnly() {
-        ledger.deposit(1, Asset.QUOTE, 1000);
-        ledger.deposit(2, Asset.BASE, 10);
+        ledger.deposit(1, Asset.QUOTE, 1000, 0);
+        ledger.deposit(2, Asset.BASE, 10, 0);
         assertTrue(ledger.reserveCash(1, 500));
         assertTrue(ledger.reserveAsset(2, 5));
 
@@ -116,8 +116,8 @@ class LedgerTest {
 
     @Test
     void selfTradeSettleNetsToStart() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
-        ledger.deposit(42, Asset.BASE, 10);
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
+        ledger.deposit(42, Asset.BASE, 10, 0);
         assertTrue(ledger.reserveCash(42, 500));
         assertTrue(ledger.reserveAsset(42, 5));
 
@@ -129,7 +129,7 @@ class LedgerTest {
 
     @Test
     void orderRejectedCarriesLedgerSeq() {
-        ledger.deposit(42, Asset.QUOTE, 1000);
-        assertEquals(new OrderRejected(2, 0, 42, RejectReason.NSF), ledger.orderRejected(42));
+        ledger.deposit(42, Asset.QUOTE, 1000, 0);
+        assertEquals(new OrderRejected(2, 0, 42, RejectReason.NSF), ledger.orderRejected(42, 0));
     }
 }

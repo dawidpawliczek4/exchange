@@ -5,31 +5,21 @@ import com.dawidpawliczek.contracts.event.CancelEvent;
 import com.dawidpawliczek.contracts.event.MarketEvent;
 import com.dawidpawliczek.contracts.event.TradeEvent;
 import java.util.*;
-import java.util.function.LongSupplier;
 
 public final class OrderBook {
 
     private final NavigableMap<Long, Deque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
     private final NavigableMap<Long, Deque<Order>> asks = new TreeMap<>();
 
-    private final LongSupplier clock;
     private long seq = 0;
-
-    public OrderBook() {
-        this(System::currentTimeMillis);
-    }
-
-    public OrderBook(LongSupplier clock) {
-        this.clock = clock;
-    }
 
     public record CancelResult(CancelEvent event, Order cancelled) {}
 
-    public synchronized CancelResult cancel(long orderId, long userId) {
+    public synchronized CancelResult cancel(long orderId, long userId, long timestamp) {
         Order removed = cancelIn(orderId, userId, bids);
         if (removed == null) removed = cancelIn(orderId, userId, asks);
         CancelStatus status = removed != null ? CancelStatus.CANCELED : CancelStatus.REJECTED;
-        return new CancelResult(new CancelEvent(++seq, clock.getAsLong(), userId, orderId, status), removed);
+        return new CancelResult(new CancelEvent(++seq, timestamp, userId, orderId, status), removed);
     }
 
     private Order cancelIn(long orderId, long userId, NavigableMap<Long, Deque<Order>> side) {
@@ -67,7 +57,7 @@ public final class OrderBook {
         return cost;
     }
 
-    public synchronized List<MarketEvent> submit(Order incoming) {
+    public synchronized List<MarketEvent> submit(Order incoming, long timestamp) {
 
         List<MarketEvent> events = new ArrayList<>();
 
@@ -84,7 +74,7 @@ public final class OrderBook {
                 long filled = Math.min(incoming.quantity(), maker.quantity());
                 Trade trade =
                         new Trade(maker.id(), maker.userId(), incoming.id(), incoming.userId(), restingPrice, filled);
-                events.add(new TradeEvent(++seq, clock.getAsLong(), trade));
+                events.add(new TradeEvent(++seq, timestamp, trade));
 
                 incoming.reduce(filled);
                 maker.reduce(filled);

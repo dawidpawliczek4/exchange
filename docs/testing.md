@@ -19,12 +19,13 @@ Testcontainers layers need a running Docker daemon. CI runs the same suite via
 ### Pure unit — contracts, the book, the ledger
 
 Codec tests assert **round-trips** (`decode(encode(x)) == x`) plus a fail-loud case for
-an unknown type/kind byte. `OrderBookTest` injects a **deterministic clock**
-(`new OrderBook(() -> 0L)`) so events are fully predictable, then asserts **whole event
-lists by equality** — `assertEquals(List.of(new TradeEvent(...)), ob.submit(order))` —
-rather than picking fields out. With a fixed clock, `seq` starting at 1, and explicit
-order ids, the expected list is exact. `LedgerTest` follows the same conventions (fixed
-clock, exact event equality) and covers the deposit boundaries (zero, negative, and
+an unknown type/kind byte. The book and the ledger have no clock — the timestamp is an
+argument of `submit`/`cancel`/`deposit` — so `OrderBookTest` passes `0` everywhere and
+asserts **whole event lists by equality** —
+`assertEquals(List.of(new TradeEvent(...)), ob.submit(order, 0))` — rather than picking
+fields out. With timestamp 0, `seq` starting at 1, and explicit order ids, the expected
+list is exact. `LedgerTest` follows the same conventions (timestamp 0, exact event
+equality) and covers the deposit boundaries (zero, negative, and
 balance overflow all yield `DepositRejected` with the balance untouched) plus the
 reserve/release/settle mechanics in isolation: reserve failures leave state unchanged,
 settle credits only the receiving legs, a self-trade nets to the starting point.
@@ -49,8 +50,14 @@ trades — e.g. "after cancel, a crossing buy trades nothing" proves the cancel 
 the resting order. The ledger analogue: deposit `Long.MAX_VALUE`, recover, then probe
 with a further deposit — `DepositRejected` (overflow) proves the balance survived.
 Recovery tests build state in one `OrderService`, `close()` it, open
-a second one on the same log, and probe the recovered instance. Determinism is asserted
-by recovering two services from `log.copy()` and comparing full probe sequences.
+a second one on the same log, and probe the recovered instance. The 3-arg constructor
+means "nothing published yet" (both watermarks 0), so the recovered instance
+**republishes every replayed event** into the test sink — tests assert that list (it is
+the recovery contract of ADR-0006) or `drain()` it before probing; the 6-arg constructor
+takes a clock and the two watermarks for the partial-loss cases. Determinism is asserted
+by recovering two services from `log.copy()` and comparing replayed events and full
+probe sequences; byte-identical replay is asserted by writing with a ticking clock,
+recovering with a constant one, and comparing the event lists including timestamps.
 
 Async is handled by `submit(...).join()` — the future completes only after WAL append +
 match, so no sleeps or timeouts are needed at this layer.
@@ -80,6 +87,14 @@ the same journal, and assert (by reading all of `orders.trades`) that no duplica
 were published — the WAL watermark test at system level. Trade tests prepend seed
 deposits (`seeds()`); an NSF case asserts the `OrderRejected` lands on `account.events`
 keyed by the user and no trade is published.
+
+The second crash it simulates is the one ADR-0006 closes — **WAL synced, producer never
+flushed**: after a first runner has published normally, the test opens an `OrderService`
+on the *same journal* with sinks that only record (a producer that died before
+`flush()`), submits crossing orders plus an NSF place at the Kafka offsets those commands
+occupy, closes it, then restarts a real runner. The assertion is that the topics now
+carry exactly the recorded-but-never-sent events, byte-for-byte (same `seq`, same
+timestamps), appended after what the first runner published, with nothing duplicated.
 
 Waiting is a hand-rolled `awaitUntil(description) { condition }` polling helper with a
 deadline — assert on *observable progress* (committed offset, `lastSourceOffset()`),
@@ -126,7 +141,7 @@ arrives.
 ## Where does a new test go?
 
 - Byte layout / wire change → codec test in `:contracts` (round-trip + unknown-tag).
-- Matching semantics → `OrderBookTest`, fixed clock, exact event lists.
+- Matching semantics → `OrderBookTest`, timestamp 0, exact event lists.
 - Single-writer semantics (WAL ordering, watermark, recovery, ledger) →
   `OrderServiceTest` with `RecordingCommandLog` + probes.
 - A `CommandLog`/sink implementation → adapter test next to it, real I/O, `@TempDir`.

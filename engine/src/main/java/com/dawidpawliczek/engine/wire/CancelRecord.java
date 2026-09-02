@@ -1,3 +1,3 @@
 package com.dawidpawliczek.engine.wire;
 
-public record CancelRecord(long orderId, long userId, long sourceOffset) implements WalRecord {}
+public record CancelRecord(long orderId, long userId, long sourceOffset, long timestamp) implements WalRecord {}

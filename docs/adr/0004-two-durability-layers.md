@@ -1,6 +1,8 @@
 # ADR-0004: Two durability layers — Kafka log + engine WAL
 
-Status: accepted (backfilled 2026-08-28; thesis decision D9)
+Status: accepted (backfilled 2026-08-28; thesis decision D9). The "known, accepted gap"
+consequence below is superseded by
+[ADR-0006](0006-recovery-republishes-unpublished-events.md).
 
 ## Context
 

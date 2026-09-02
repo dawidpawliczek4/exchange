@@ -9,6 +9,7 @@ import com.dawidpawliczek.contracts.command.PlaceOrderCommand
 import com.dawidpawliczek.engine.application.OrderService
 import com.dawidpawliczek.matching.adapter.FileCommandLog
 import com.dawidpawliczek.matching.adapter.KafkaAccountFeedSink
+import com.dawidpawliczek.matching.adapter.KafkaFeedWatermark
 import com.dawidpawliczek.matching.adapter.KafkaMarketFeedSink
 import com.sun.net.httpserver.HttpServer
 import io.micrometer.core.instrument.Counter
@@ -79,8 +80,19 @@ class MatchingRunner(
                     put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false)
                 },
             )
+        val publishedMarketSeq = KafkaFeedWatermark.lastPublishedSeq(bootstrapServers, Topics.TRADES)
+        val publishedAccountSeq = KafkaFeedWatermark.lastPublishedSeq(bootstrapServers, Topics.ACCOUNT)
         commandLog = FileCommandLog(journalPath)
-        orderService = OrderService(commandLog, KafkaMarketFeedSink(producer), KafkaAccountFeedSink(producer))
+        orderService =
+            OrderService(
+                commandLog,
+                KafkaMarketFeedSink(producer),
+                KafkaAccountFeedSink(producer),
+                System::currentTimeMillis,
+                publishedMarketSeq,
+                publishedAccountSeq,
+            )
+        producer.flush()
         registry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
         registry.config().commonTags("application", "matching-service")
         placeCounter = registry.counter("exchange.commands.processed", "type", "place")

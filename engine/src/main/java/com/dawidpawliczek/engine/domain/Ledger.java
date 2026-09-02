@@ -7,25 +7,15 @@ import com.dawidpawliczek.contracts.event.DepositAccepted;
 import com.dawidpawliczek.contracts.event.DepositRejected;
 import com.dawidpawliczek.contracts.event.OrderRejected;
 import java.util.HashMap;
-import java.util.function.LongSupplier;
 
 public class Ledger {
 
     long seq = 0;
-    LongSupplier clock;
-
-    public Ledger() {
-        this(System::currentTimeMillis);
-    }
-
-    public Ledger(LongSupplier clock) {
-        this.clock = clock;
-    }
 
     // userId -> Wallet
     HashMap<Long, Wallet> walletHashMap = new HashMap<>();
 
-    public AccountEvent deposit(long userId, Asset asset, long quantity) {
+    public AccountEvent deposit(long userId, Asset asset, long quantity, long timestamp) {
         if (quantity > 0 && canAdd(quantity, balanceOf(userId, asset))) {
             Wallet wallet = walletHashMap.computeIfAbsent(userId, _ -> new Wallet());
             if (asset == Asset.QUOTE) {
@@ -33,9 +23,9 @@ public class Ledger {
             } else {
                 wallet.asset += quantity;
             }
-            return new DepositAccepted(++seq, clock.getAsLong(), userId, asset);
+            return new DepositAccepted(++seq, timestamp, userId, asset);
         } else {
-            return new DepositRejected(++seq, clock.getAsLong(), userId, asset);
+            return new DepositRejected(++seq, timestamp, userId, asset);
         }
     }
 
@@ -97,7 +87,7 @@ public class Ledger {
         walletHashMap.get(sellerId).cash += price * quantity;
     }
 
-    public OrderRejected orderRejected(long userId) {
-        return new OrderRejected(++seq, clock.getAsLong(), userId, RejectReason.NSF);
+    public OrderRejected orderRejected(long userId, long timestamp) {
+        return new OrderRejected(++seq, timestamp, userId, RejectReason.NSF);
     }
 }

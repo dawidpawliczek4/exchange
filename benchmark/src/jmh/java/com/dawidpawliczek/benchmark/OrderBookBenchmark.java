@@ -42,7 +42,7 @@ public class OrderBookBenchmark {
     public void matchBatch(Blackhole bh) {
         for (PlaceOrderCommand c : workload) {
             Order order = new Order(idSeq++, c.userId(), c.side(), c.price(), c.market(), c.quantity());
-            bh.consume(book.submit(order));
+            bh.consume(book.submit(order, 0));
         }
     }
 }

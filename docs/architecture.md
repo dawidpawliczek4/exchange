@@ -96,10 +96,11 @@ is a linear scan over both sides and returns a `CancelResult`: the `CancelEvent`
 market buy (overflow → `-1`, treated as unaffordable); it is a read-only query, the book
 knows nothing about the ledger.
 
-The book stamps every event with a monotonically increasing `seq` and a timestamp from an
-injectable `LongSupplier clock` (defaults to `System::currentTimeMillis`) — that is the
-source of `MarketEvent.seq()/timestamp()`. Methods are `synchronized`, but in production
-only the single writer thread calls them.
+The book stamps every event with a monotonically increasing `seq` and the `timestamp`
+its caller passes into `submit`/`cancel` — the book has no clock of its own; the
+timestamp is the command's, sampled once by `OrderService` and written to the WAL. That
+is the source of `MarketEvent.seq()/timestamp()`. Methods are `synchronized`, but in
+production only the single writer thread calls them.
 
 ### OrderService (`application/`) — the single-writer model
 
@@ -121,7 +122,9 @@ One `matching-writer` thread drains batches and, per batch:
 2. **WAL append** — every surviving command is encoded (`WalCodec`) and appended to the
    `CommandLog`, unconditionally — including places that will fail the funds check
    ([ADR-0005](adr/0005-nsf-verdict-at-apply.md)). Order ids are assigned here, before
-   logging, so replay reproduces them.
+   logging, so replay reproduces them; so is the command's timestamp (one clock sample
+   per command, passed as an argument into every book/ledger call it makes, so every
+   event it produces carries it), so replay reproduces those too.
 3. **`sync()`** — one fsync per batch (group commit), then the source-offset watermark
    advances.
 4. **Apply + publish** — only now does each command take effect, through one shared
@@ -155,17 +158,18 @@ encoded by `WalCodec`; the leading byte is the record kind:
 
 | Record | Tag | Size | Layout |
 |---|---|---|---|
-| cancel | 0 | 25B | `[1B tag][8B sourceOffset][8B orderId][8B userId]` |
-| place | 1 | 43B | `[1B tag][8B sourceOffset][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
-| deposit | 2 | 26B | `[1B tag][8B sourceOffset][8B userId][1B asset][8B quantity]` |
+| cancel | 0 | 33B | `[1B tag][8B sourceOffset][8B timestamp][8B orderId][8B userId]` |
+| place | 1 | 51B | `[1B tag][8B sourceOffset][8B timestamp][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
+| deposit | 2 | 34B | `[1B tag][8B sourceOffset][8B timestamp][8B userId][1B asset][8B quantity]` |
 
-The tag byte was repurposed from "version" to "record kind" without breaking layout: kind
-1 is byte-identical to the old single-format place record, so pre-cancel journals still
-replay. Unknown kinds fail loud (`unsupported WAL record kind`); upgrading across an
+The timestamp field was added in place (same tags, 8 bytes longer), so journals written
+before it are not readable — there is no production data to migrate, wipe the volume.
+Unknown kinds fail loud (`unsupported WAL record kind`); upgrading across an
 incompatible format change means wiping the journal volume
 (`docker compose -f devops/docker-compose.yml down -v`).
 
-Every record carries the Kafka offset of the command it came from — see
+Every record carries the Kafka offset of the command it came from and the timestamp the
+writer sampled for it at append time — see
 [Durability and recovery](#durability-and-recovery).
 
 ### Ledger
@@ -176,7 +180,8 @@ complete inside the engine: deposits, reservations on place, settlement on trade
 releases on cancel, NSF rejections — all crash-safe through the shared apply path.
 
 `Ledger` holds `HashMap<Long, Wallet>` (`Wallet` = `cash` + `asset` balance, one spot
-pair) with its own event `seq` counter and injectable clock, mirroring `OrderBook`.
+pair) with its own event `seq` counter; like `OrderBook` it has no clock and stamps
+events with the timestamp its caller passes in.
 Reservations are **implicit**: `reserveCash/reserveAsset` subtract from the balance
 (returning `false` — never throwing — on insufficient or negative amounts),
 `releaseCash/releaseAsset` add back, and `settle(buyer, seller, price, qty)` credits
@@ -205,8 +210,12 @@ poll orders.commands (partition 0) → CommandCodec.decode → orderService.subm
 ```
 
 The consumer `assign`s partition 0 explicitly (single-partition topic assumption), uses
-manual commits, `auto.offset.reset=earliest`, and an idempotent producer. On startup it
-seeks to `lastSourceOffset() + 1` from the recovered WAL.
+manual commits, `auto.offset.reset=earliest`, and an idempotent producer. Before the
+engine is built, `KafkaFeedWatermark` reads the last record of `orders.trades` and of
+`account.events` (partition 0, `seq` from the first 8 header bytes, no decoding) and hands
+the two watermarks to `OrderService`, which republishes whatever the WAL has above them
+([ADR-0006](adr/0006-recovery-republishes-unpublished-events.md)); the runner flushes
+once, then seeks to `lastSourceOffset() + 1` from the recovered WAL.
 
 Adapters: `FileCommandLog` (the WAL — each record framed as
 `[4B length][4B crc32][payload]`; replay stops at the first torn or corrupt frame, which
@@ -284,18 +293,24 @@ On startup `OrderService.recover()` replays the WAL in order through the **same 
 path as live processing** — re-running each place's reserve/match/settle (reproducing
 NSF rejections, [ADR-0005](adr/0005-nsf-verdict-at-apply.md)), each cancel's release,
 and each deposit — rebuilding book, ledger, id counter, and the source-offset watermark
-*before* the writer thread starts; replayed events are discarded, never republished. On (re)assignment the consumer seeks to
+*before* the writer thread starts. Replayed events are compared against the two
+published-`seq` watermarks the runner read from Kafka (market and account streams have
+independent counters) and everything above them is republished through the normal sinks
+([ADR-0006](adr/0006-recovery-republishes-unpublished-events.md)); because the WAL
+carries the command timestamp, the republished bytes equal what the crashed run would
+have sent. On (re)assignment the consumer seeks to
 `lastSourceOffset() + 1`, so commands that were WAL-synced but whose offset commit was
 lost in a crash are not re-consumed; the engine additionally drops any command whose
 offset is `<= watermark` (idempotent apply), covering re-delivery inside one process
 lifetime.
 
-**Known, deliberate gap**: a crash after WAL `sync()` but before `producer.flush()` loses
-those events from `orders.trades` — recovery rebuilds the book correctly but never
-republishes. Market-data consumers can miss events; the book itself cannot diverge. This
-is also why `orders.trades` must not be promoted to a source of truth about money
-([ADR-0001](adr/0001-ledger-in-hot-path.md) rejects the settlement-from-topic variant on
-exactly this ground).
+The crash window that used to lose events — after WAL `sync()`, before
+`producer.flush()` — is therefore closed on the next start. This rests on each feed
+topic being an ordered prefix of its event stream: constant key on `orders.trades`,
+`partitions: 1` on both topics, idempotent producer, single publishing thread. Splitting
+either topic into several partitions breaks the watermark read and needs a new ADR. The
+topic being complete does not make it the authority on money: the ledger is
+([ADR-0001](adr/0001-ledger-in-hot-path.md)).
 
 ## Observability
 

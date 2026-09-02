@@ -24,6 +24,7 @@ import com.dawidpawliczek.engine.ports.MarketFeedSink;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -365,6 +366,9 @@ class OrderServiceTest {
             var market = new RecordingMarketFeedSink();
             var service2 = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
             assertEquals(11, service2.lastSourceOffset());
+            var replayed = market.drain();
+            assertEquals(1, replayed.size());
+            assertEquals(CancelStatus.CANCELED, ((CancelEvent) replayed.getFirst()).status());
 
             submit(service2, buy(9, 100, 5), 12);
             assertTrue(market.drain().isEmpty());
@@ -383,6 +387,7 @@ class OrderServiceTest {
             var market = new RecordingMarketFeedSink();
             var service2 = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
             assertEquals(11, service2.lastSourceOffset());
+            assertTrue(market.drain().isEmpty());
 
             submit(service2, buy(9, 101, 10), 12);
             assertEquals(List.of(new Trade(0, 7, 2, 9, 100, 5), new Trade(1, 8, 2, 9, 101, 5)), trades(market.drain()));
@@ -405,8 +410,15 @@ class OrderServiceTest {
             service1.close();
 
             var market = new RecordingMarketFeedSink();
-            var service2 = new OrderService(log, market, NO_OP_ACCOUNT_SINK);
+            var account = new RecordingAccountFeedSink();
+            var service2 = new OrderService(log, market, account);
             assertEquals(12, service2.lastSourceOffset());
+            assertEquals(List.of(new Trade(0, 7, 1, 9, 100, 5)), trades(market.drain()));
+            var replayedAccount = account.drain();
+            assertEquals(5, replayedAccount.size());
+            var rejected = assertInstanceOf(OrderRejected.class, replayedAccount.getLast());
+            assertEquals(55, rejected.userId());
+            assertEquals(5, rejected.seq());
             assertEquals(cash7, service2.ledger().cashOf(7));
             assertEquals(asset7, service2.ledger().assetOf(7));
             assertEquals(cash9, service2.ledger().cashOf(9));
@@ -439,6 +451,7 @@ class OrderServiceTest {
 
             var recoveredMarket = new RecordingMarketFeedSink();
             var recovered = new OrderService(log, recoveredMarket, NO_OP_ACCOUNT_SINK);
+            assertEquals(List.of(new Trade(0, 7, 1, 9, 100, 5)), trades(recoveredMarket.drain()));
             submit(recovered, sell(7, 100, 5), 12);
             assertTrue(recoveredMarket.drain().isEmpty());
             assertEquals(7, log.size());
@@ -455,7 +468,10 @@ class OrderServiceTest {
             var account = new RecordingAccountFeedSink();
             var service2 = new OrderService(log, events -> {}, account);
             assertEquals(0, service2.lastSourceOffset());
-            assertTrue(account.drain().isEmpty());
+            var replayed =
+                    assertInstanceOf(DepositAccepted.class, account.drain().getFirst());
+            assertEquals(1, replayed.seq());
+            assertEquals(42, replayed.userId());
 
             submit(service2, new DepositCommand(42, Asset.QUOTE, 1), 1);
             var rejected =
@@ -486,6 +502,11 @@ class OrderServiceTest {
             var serviceA = new OrderService(log.copy(), marketA, NO_OP_ACCOUNT_SINK);
             var serviceB = new OrderService(log.copy(), marketB, NO_OP_ACCOUNT_SINK);
             assertEquals(serviceA.lastSourceOffset(), serviceB.lastSourceOffset());
+            var replayedA = marketA.drain();
+            assertEquals(replayedA, marketB.drain());
+            assertEquals(
+                    List.of(new Trade(0, 1, 2, 3, 100, 4), new Trade(0, 1, 3, 4, 100, 1)),
+                    trades(replayedA).subList(0, 2));
 
             var probesA = probeSequence(serviceA, marketA);
             var probesB = probeSequence(serviceB, marketB);
@@ -498,6 +519,58 @@ class OrderServiceTest {
             }
             serviceA.close();
             serviceB.close();
+        }
+
+        @Test
+        void replayRepublishesOnlyEventsAboveWatermarks() throws InterruptedException {
+            var log = new RecordingCommandLog();
+            var writer = new OrderService(log, events -> {}, NO_OP_ACCOUNT_SINK);
+            seed(writer, 0, 7, 9);
+            submit(writer, sell(7, 100, 5), 10);
+            submit(writer, buy(9, 100, 5), 11);
+            submit(writer, new CancelOrderCommand(7, 999), 12);
+            submit(writer, sell(55, 100, 5), 13);
+            writer.close();
+
+            var market = new RecordingMarketFeedSink();
+            var account = new RecordingAccountFeedSink();
+            var partial = new OrderService(log.copy(), market, account, System::currentTimeMillis, 1, 4);
+            var replayedMarket = market.drain();
+            assertEquals(1, replayedMarket.size());
+            var cancel = assertInstanceOf(CancelEvent.class, replayedMarket.getFirst());
+            assertEquals(2, cancel.seq());
+            assertEquals(CancelStatus.REJECTED, cancel.status());
+            var replayedAccount = account.drain();
+            assertEquals(1, replayedAccount.size());
+            assertEquals(5, replayedAccount.getFirst().seq());
+            partial.close();
+
+            var complete = new OrderService(log.copy(), market, account, System::currentTimeMillis, 2, 5);
+            assertTrue(market.drain().isEmpty());
+            assertTrue(account.drain().isEmpty());
+            complete.close();
+        }
+
+        @Test
+        void replayedEventsAreByteIdenticalToTheOriginals() throws InterruptedException {
+            var log = new RecordingCommandLog();
+            var originalMarket = new RecordingMarketFeedSink();
+            var originalAccount = new RecordingAccountFeedSink();
+            var ticking = new AtomicLong(1_000);
+            var writer = new OrderService(log, originalMarket, originalAccount, ticking::getAndIncrement, 0, 0);
+            seed(writer, 0, 7, 9);
+            submit(writer, sell(7, 100, 5), 10);
+            submit(writer, buy(9, 101, 8), 11);
+            submit(writer, new CancelOrderCommand(9, 1), 12);
+            submit(writer, sell(55, 100, 5), 13);
+            writer.close();
+
+            var market = new RecordingMarketFeedSink();
+            var account = new RecordingAccountFeedSink();
+            var recovered = new OrderService(log, market, account, () -> 42, 0, 0);
+            assertEquals(originalMarket.drain(), market.drain());
+            assertEquals(originalAccount.drain(), account.drain());
+            recovered.close();
         }
     }
 }

@@ -11,9 +11,12 @@ import com.dawidpawliczek.contracts.command.PlaceOrderCommand
 import com.dawidpawliczek.contracts.event.AccountEvent
 import com.dawidpawliczek.contracts.event.AccountEventCodec
 import com.dawidpawliczek.contracts.event.DepositAccepted
+import com.dawidpawliczek.contracts.event.MarketEvent
 import com.dawidpawliczek.contracts.event.MarketEventCodec
 import com.dawidpawliczek.contracts.event.OrderRejected
 import com.dawidpawliczek.contracts.event.TradeEvent
+import com.dawidpawliczek.engine.application.OrderService
+import com.dawidpawliczek.matching.adapter.FileCommandLog
 import org.apache.kafka.clients.admin.Admin
 import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.ConsumerConfig
@@ -88,7 +91,9 @@ class MatchingRunnerIntegrationTest {
                 ?.offset()
         }
 
-    private fun readAllTrades(): List<Trade> {
+    private fun readAllTrades(): List<Trade> = readAllMarketEvents().map { (it as TradeEvent).trade() }
+
+    private fun readAllMarketEvents(): List<MarketEvent> {
         KafkaConsumer<String, ByteArray>(
             Properties().apply {
                 put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.bootstrapServers)
@@ -100,14 +105,14 @@ class MatchingRunnerIntegrationTest {
         ).use { consumer ->
             consumer.assign(listOf(TopicPartition(Topics.TRADES, 0)))
             consumer.seekToBeginning(consumer.assignment())
-            val trades = mutableListOf<Trade>()
+            val events = mutableListOf<MarketEvent>()
             val deadline = System.currentTimeMillis() + 10_000
             while (System.currentTimeMillis() < deadline) {
                 for (record in consumer.poll(Duration.ofMillis(250))) {
-                    trades.add((MarketEventCodec.decode(record.value()) as TradeEvent).trade())
+                    events.add(MarketEventCodec.decode(record.value()))
                 }
             }
-            return trades
+            return events
         }
     }
 
@@ -249,5 +254,59 @@ class MatchingRunnerIntegrationTest {
         assertEquals("2", key)
         val rejected = event as OrderRejected
         assertEquals(2L, rejected.userId())
+    }
+
+    @Test
+    fun recoveryRepublishesEventsLostBetweenWalSyncAndProducerFlush() {
+        createTopics()
+        val journal = dir.resolve("journal.bin")
+        produceCommands(*seeds(), sell(100, 5), buy(100, 5))
+
+        MatchingRunner(kafka.bootstrapServers, journal).use { runner ->
+            runner.start()
+            awaitUntil("runner1 committed offset 4") { committedOffset() == 4L }
+        }
+
+        produceCommands(sell(101, 5), buy(101, 5), PlaceOrderCommand(3, Side.BUY, 100, false, 1))
+        val neverFlushedMarket = mutableListOf<MarketEvent>()
+        val neverFlushedAccount = mutableListOf<AccountEvent>()
+        val log = FileCommandLog(journal)
+        val crashed =
+            OrderService(
+                log,
+                { neverFlushedMarket.addAll(it) },
+                { neverFlushedAccount.addAll(it) },
+                System::currentTimeMillis,
+                1,
+                2,
+            )
+        crashed.submit(sell(101, 5), 4).join()
+        crashed.submit(buy(101, 5), 5).join()
+        crashed.submit(PlaceOrderCommand(3, Side.BUY, 100, false, 1), 6).join()
+        crashed.close()
+        log.close()
+        assertEquals(1, neverFlushedMarket.size)
+        assertEquals(1, neverFlushedAccount.size)
+        assertEquals(listOf(Trade(0, 1, 1, 2, 100, 5)), readAllTrades())
+
+        MatchingRunner(kafka.bootstrapServers, journal).use { runner ->
+            runner.start()
+            assertEquals(6L, runner.lastSourceOffset())
+            produceCommands(sell(105, 1))
+            awaitUntil("runner2 committed offset 8") { committedOffset() == 8L }
+            assertEquals(7L, runner.lastSourceOffset())
+        }
+
+        val marketEvents = readAllMarketEvents()
+        assertEquals(2, marketEvents.size)
+        val first = marketEvents.first() as TradeEvent
+        assertEquals(1L, first.seq())
+        assertEquals(Trade(0, 1, 1, 2, 100, 5), first.trade())
+        assertEquals(neverFlushedMarket, marketEvents.drop(1))
+
+        val accountEvents = readAllAccountEvents()
+        assertEquals(listOf("1", "2", "3"), accountEvents.map { it.first })
+        assertEquals(listOf(1L, 2L, 3L), accountEvents.map { it.second.seq() })
+        assertEquals(neverFlushedAccount, accountEvents.drop(2).map { it.second })
     }
 }
