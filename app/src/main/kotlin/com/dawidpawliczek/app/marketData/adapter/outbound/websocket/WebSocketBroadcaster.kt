@@ -1,14 +1,12 @@
 package com.dawidpawliczek.app.marketData.adapter.outbound.websocket
 
 import com.dawidpawliczek.app.marketData.application.port.outbound.MarketDataBroadcaster
-import org.springframework.stereotype.Component
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 import java.util.concurrent.CopyOnWriteArraySet
 
-@Component
 class WebSocketBroadcaster :
     TextWebSocketHandler(),
     MarketDataBroadcaster {

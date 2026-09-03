@@ -1,5 +1,6 @@
 package com.dawidpawliczek.app.marketData.adapter.outbound.websocket
 
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.socket.config.annotation.EnableWebSocket
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer
@@ -7,12 +8,17 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 @Configuration
 @EnableWebSocket
-class WebSocketConfig(
-    private val broadcaster: WebSocketBroadcaster,
-) : WebSocketConfigurer {
+class WebSocketConfig : WebSocketConfigurer {
+    @Bean
+    fun marketDataBroadcaster() = WebSocketBroadcaster()
+
+    @Bean
+    fun candleBroadcaster() = WebSocketBroadcaster()
+
     override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
         registry
-            .addHandler(broadcaster, "/marketdata")
+            .addHandler(marketDataBroadcaster(), "/marketdata")
+            .addHandler(candleBroadcaster(), "/marketdata/candles")
             .setAllowedOrigins("*")
     }
 }
