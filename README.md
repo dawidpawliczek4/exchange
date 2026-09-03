@@ -11,15 +11,16 @@ I wanted to understand two things:
 
 ### Modules
 
-| Module | Language             | Role                              |
-|---|----------------------|-----------------------------------|
-| `:contracts` |  Java            | The wire: shared types + codec.   |
-| `:engine` |  Java            | The core.                         |
+| Module              | Language             | Role                              |
+|---------------------|----------------------|-----------------------------------|
+| `:contracts`        | Java                 | The wire: shared types + codec.   |
+| `:engine`           | Java                 | The core.                         |
 | `:matching-service` | Kotlin               | Runs the engine off Kafka.        |
-| `:app` | Kotlin + Spring Boot | Gateway: REST in, trades out.     |
-| `:agent-crowd` | Kotlin               | Bot crowd trading via Kafka.      |
-| `:benchmark` | Java + JMH           | Measures the engine.              |
-| `:e2e` | Kotlin               | Full-stack test (Testcontainers). |
+| `:app`              | Kotlin + Spring Boot | Gateway: REST in, trades out.     |
+| `:agent-crowd`      | Kotlin               | Bot crowd trading via Kafka.      |
+| `:frontend`         | Vue 3 + Vite         | Trading UI (pnpm via Gradle).     |
+| `:benchmark`        | Java + JMH           | Measures the engine.              |
+| `:e2e`              | Kotlin               | Full-stack test (Testcontainers). |
 
 Orders flow `gateway → orders.commands → matching-service → orders.trades → gateway`. The gateway
 validates and publishes; the matching service consumes commands, matches them in the engine, and

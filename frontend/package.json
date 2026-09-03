@@ -13,7 +13,11 @@
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "oxfmt src/"
+    "format": "oxfmt src/",
+    "check": "run-s \"check:*\"",
+    "check:oxlint": "oxlint .",
+    "check:eslint": "eslint . --cache",
+    "check:format": "oxfmt --check src/"
   },
   "dependencies": {
     "pinia": "^4.0.2",

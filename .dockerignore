@@ -3,3 +3,5 @@
 .kotlin
 .idea
 .git
+**/node_modules
+**/.gradle

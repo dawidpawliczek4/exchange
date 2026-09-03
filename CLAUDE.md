@@ -21,6 +21,8 @@ docker compose -f devops/docker-compose.yml up -d kafka postgres
 ./gradlew :matching-service:run        # needs Kafka only
 ./gradlew :app:bootRun                 # needs Kafka AND Postgres (Flyway + ddl-auto: validate)
 ./gradlew :agent-crowd:run             # ZI bot crowd against Kafka; BOT_COUNT/MID_PRICE/PRICE_BAND/SEED env
+./gradlew :frontend:build              # Vue UI: pnpm install + vue-tsc + vite build into frontend/build/dist (Node/pnpm downloaded by Gradle)
+cd frontend && pnpm dev                 # UI dev loop with HMR; Gradle is for CI and images, not for development
 
 just compose-up / just demo / just compose-reset   # full stack in Docker
 ```

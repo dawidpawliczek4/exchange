@@ -11,6 +11,7 @@ COPY matching-service/build.gradle.kts matching-service/
 COPY agent-crowd/build.gradle.kts agent-crowd/
 COPY benchmark/build.gradle.kts benchmark/
 COPY e2e/build.gradle.kts e2e/
+COPY frontend/build.gradle.kts frontend/
 RUN ./gradlew --no-daemon :matching-service:dependencies
 
 COPY contracts contracts

@@ -21,15 +21,16 @@ Kafka/HTTP.
 
 ## Modules
 
-| Module | Language | Role |
-|---|---|---|
-| `:contracts` | Java | Wire truth: shared types + the two Kafka codecs |
-| `:engine` | Java (`java-library`) | Matching core: order book, single-writer service, WAL codec |
-| `:matching-service` | Kotlin (application) | Hosts the engine off Kafka; owns metrics |
-| `:app` | Kotlin + Spring Boot 4 | Gateway: REST + JWT in, WebSocket market data out |
-| `:agent-crowd` | Kotlin (application) | Bot crowd: seeded zero-intelligence traders producing straight to Kafka |
-| `:benchmark` | Java + JMH | Engine measurement harnesses ([benchmarking.md](benchmarking.md)) |
-| `:e2e` | Kotlin (tests only) | Full-stack test: Testcontainers Kafka + Postgres, gateway + runner in-process |
+| Module              | Language                        | Role                                                                                                |
+|---------------------|---------------------------------|-----------------------------------------------------------------------------------------------------|
+| `:contracts`        | Java                            | Wire truth: shared types + the two Kafka codecs                                                     |
+| `:engine`           | Java (`java-library`)           | Matching core: order book, single-writer service, WAL codec                                         |
+| `:matching-service` | Kotlin (application)            | Hosts the engine off Kafka; owns metrics                                                            |
+| `:app`              | Kotlin + Spring Boot 4          | Gateway: REST + JWT in, WebSocket market data out                                                   |
+| `:agent-crowd`      | Kotlin (application)            | Bot crowd: seeded zero-intelligence traders producing straight to Kafka                             |
+| `:frontend`         | Vue 3 + TypeScript (Vite, pnpm) | Trading UI; `node-gradle` drives pnpm so `./gradlew build` covers it. Not yet served by the gateway |
+| `:benchmark`        | Java + JMH                      | Engine measurement harnesses ([benchmarking.md](benchmarking.md))                                   |
+| `:e2e`              | Kotlin (tests only)             | Full-stack test: Testcontainers Kafka + Postgres, gateway + runner in-process                       |
 
 Dependency rules: `:engine` depends on `:contracts` via `api` (not `implementation`)
 because contract types appear in the engine's public API (`OrderCommand` in
@@ -48,20 +49,20 @@ token, 1 byte on the wire), `RejectReason`, `Topics` with `orders.commands` /
 `CancelOrderCommand`, `DepositCommand`) + `CommandCodec` for the `orders.commands` topic.
 Fixed-width, first byte is the type tag:
 
-| Command | Type | Size | Layout |
-|---|---|---|---|
-| place | 0 | 27B | `[1B type][8B userId][1B side][8B price][1B market][8B qty]` |
-| cancel | 1 | 17B | `[1B type][8B userId][8B id]` |
-| deposit | 2 | 18B | `[1B type][8B userId][1B asset][8B quantity]` |
+| Command | Type | Size | Layout                                                       |
+|---------|------|------|--------------------------------------------------------------|
+| place   | 0    | 27B  | `[1B type][8B userId][1B side][8B price][1B market][8B qty]` |
+| cancel  | 1    | 17B  | `[1B type][8B userId][8B id]`                                |
+| deposit | 2    | 18B  | `[1B type][8B userId][1B asset][8B quantity]`                |
 
 **`contracts.event`** — sealed `MarketEvent` (`TradeEvent`, `CancelEvent`; both carry
 `seq()` and `timestamp()`) + `MarketEventCodec` for the `orders.trades` topic. 17B header
 `[8B seq][8B timestamp][1B type]`, then the body:
 
-| Event | Type | Body |
-|---|---|---|
-| trade | 0 | 48B: makerId, makerUserId, takerId, takerUserId, price, quantity (6 longs) |
-| cancel | 1 | 17B: `[8B userId][8B orderId][1B status]` (0 = CANCELED, 1 = REJECTED) |
+| Event  | Type | Body                                                                       |
+|--------|------|----------------------------------------------------------------------------|
+| trade  | 0    | 48B: makerId, makerUserId, takerId, takerUserId, price, quantity (6 longs) |
+| cancel | 1    | 17B: `[8B userId][8B orderId][1B status]` (0 = CANCELED, 1 = REJECTED)     |
 
 Despite its name, `orders.trades` carries the union of trade *and* cancel events — it is
 the market-event stream, not a trades-only topic.
@@ -156,11 +157,11 @@ ones.
 `WalRecord` is a sealed tagged union (`PlaceRecord`, `CancelRecord`, `DepositRecord`)
 encoded by `WalCodec`; the leading byte is the record kind:
 
-| Record | Tag | Size | Layout |
-|---|---|---|---|
-| cancel | 0 | 33B | `[1B tag][8B sourceOffset][8B timestamp][8B orderId][8B userId]` |
-| place | 1 | 51B | `[1B tag][8B sourceOffset][8B timestamp][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
-| deposit | 2 | 34B | `[1B tag][8B sourceOffset][8B timestamp][8B userId][1B asset][8B quantity]` |
+| Record  | Tag | Size | Layout                                                                                            |
+|---------|-----|------|---------------------------------------------------------------------------------------------------|
+| cancel  | 0   | 33B  | `[1B tag][8B sourceOffset][8B timestamp][8B orderId][8B userId]`                                  |
+| place   | 1   | 51B  | `[1B tag][8B sourceOffset][8B timestamp][8B id][8B userId][1B side][8B price][1B market][8B qty]` |
+| deposit | 2   | 34B  | `[1B tag][8B sourceOffset][8B timestamp][8B userId][1B asset][8B quantity]`                       |
 
 The timestamp field was added in place (same tags, 8 bytes longer), so journals written
 before it are not readable — there is no production data to migrate, wipe the volume.

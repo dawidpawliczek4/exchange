@@ -26,5 +26,6 @@ include(":benchmark")
 include(":matching-service")
 include(":e2e")
 include("agent-crowd")
+include(":frontend")
 
 rootProject.name = "exchange"

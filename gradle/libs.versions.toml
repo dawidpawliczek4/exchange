@@ -16,6 +16,7 @@ jjwt = "0.13.0"
 testcontainers = "2.0.5"
 micrometer = "1.14.4"
 hdrhistogram = "2.2.2"
+nodeGradle = "7.1.0"
 
 [libraries]
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
@@ -67,3 +68,4 @@ springBootEcosystem = ["springBootStarterWeb", "springBootStarterWebsocket", "sp
 kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 springBoot = { id = "org.springframework.boot", version.ref = "springBoot" }
 springDependencyManagement = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+nodeGradle = { id = "com.github.node-gradle.node", version.ref = "nodeGradle" }
