@@ -69,7 +69,7 @@ class OrderControllerTest {
             .body(OrderRequest(Side.BUY, 100, false, 1))
             .exchange()
             .expectStatus()
-            .isForbidden()
+            .isUnauthorized()
 
         verifyNoInteractions(publisher)
     }
@@ -94,7 +94,7 @@ class OrderControllerTest {
             .uri("/order/7")
             .exchange()
             .expectStatus()
-            .isForbidden()
+            .isUnauthorized()
 
         verifyNoInteractions(publisher)
     }

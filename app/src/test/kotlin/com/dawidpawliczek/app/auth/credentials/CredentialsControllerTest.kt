@@ -153,7 +153,7 @@ class CredentialsControllerTest {
             .uri("/test/protected")
             .exchange()
             .expectStatus()
-            .isForbidden()
+            .isUnauthorized()
     }
 
     private fun register(): AuthTokens {

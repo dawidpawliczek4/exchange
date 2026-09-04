@@ -254,6 +254,14 @@ Package root is `com.dawidpawliczek.app`; source directories under
   candle endpoint is a plain HTTP GET that the filter chain sees. Users/credentials/sessions
   live in Postgres via Flyway (`db/migration/V1__init.sql`, `ddl-auto: validate`) — the
   gateway won't boot without a reachable database.
+- **Errors** (`error/`): every failure is an RFC 9457 `ProblemDetail`
+  (`application/problem+json`; `status`/`title`/`detail`, validation adds an `errors`
+  list of `{field, message}`), produced by one `ApiExceptionHandler`
+  (`ResponseEntityExceptionHandler` subclass). Security's 401 goes through the same
+  advice: the authentication entry point hands the exception to the MVC
+  `HandlerExceptionResolver` instead of `sendError`, so there is no `/error` dispatch and no
+  `ErrorAttributes` override. Unhandled exceptions become a 500 with no `detail` — the
+  message is logged, never returned.
 - **Market data** (`marketData/`, hexagonal like `order/`): two independent consumers of
   `orders.trades` feeding two WebSocket endpoints. See below.
 
