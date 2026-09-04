@@ -11,6 +11,7 @@ docker compose -f devops/docker-compose.yml up -d kafka postgres
 ./gradlew :matching-service:run     # plain JVM app, Kafka at localhost:9092
 ./gradlew :app:bootRun              # Spring gateway on :8080
 ./gradlew :agent-crowd:run          # bot crowd, Kafka only; runs until Ctrl+C
+cd frontend && pnpm dev             # trading UI on :5173 with HMR
 ```
 
 The gateway needs **both** Kafka and Postgres: Flyway runs `V1__init.sql` and Hibernate
@@ -18,6 +19,12 @@ validates the schema at boot. The matching service needs only Kafka and writes i
 `./journal.bin` in the working directory. The crowd needs only Kafka (and a running
 matching service to trade against). Crowd knobs, all env vars with defaults:
 `BOT_COUNT` (100), `MID_PRICE` (10000), `PRICE_BAND` (100), `SEED` (42).
+
+The UI talks to the gateway's WebSocket directly, so it needs the gateway and something
+producing trades (the crowd, or `just demo`). The host defaults to `ws://localhost:8080`;
+override it with `VITE_WS_URL` in `frontend/.env.local` when the gateway is elsewhere (a
+port-forward, or the Compose stack). Use `pnpm dev` for development — `./gradlew
+:frontend:build` exists for CI and images and produces a static build, not a dev server.
 
 Build/test:
 

@@ -15,6 +15,7 @@ Testcontainers layers need a running Docker daemon. CI runs the same suite via
 | Service integration | `:matching-service` (`MatchingRunnerIntegrationTest`) | Testcontainers Kafka | ~10s+ |
 | Gateway slice | `:app` (controller tests) | `@SpringBootTest` + Testcontainers Postgres + `@MockitoBean` | seconds |
 | End-to-end | `:e2e` (`TradeFlowE2eTest`) | Testcontainers Kafka + Postgres, gateway booted, runner in-process | ~30s+ |
+| Frontend | `:frontend` (`src/marketdata/__tests__/`) | vitest + jsdom | ms |
 
 ### Pure unit — contracts, the book, the ledger
 
@@ -138,6 +139,21 @@ startup and the first order; a bounded `messages.poll(30s)` replaces sleeps. Neg
 path ("cancelled order must not trade") uses a short bounded poll asserting *nothing*
 arrives.
 
+### Frontend — pure modules, vitest
+
+`./gradlew build` runs the UI checks too: `:frontend:check` depends on `pnpm test:unit`
+and `pnpm check` (oxlint, eslint, `oxfmt --check`), and `:frontend:assemble` on
+`pnpm build`, which type-checks with `vue-tsc`. A red vitest or a formatting violation
+under `frontend/src/` fails CI exactly like a Kotlin one.
+
+`lightweight-charts` needs a real canvas and throws under jsdom, so anything worth
+asserting lives in plain `.ts` modules and the `.vue` component keeps only wiring.
+`src/marketdata/__tests__/candles.spec.ts` covers the WebSocket-to-chart conversions that
+are easy to get silently wrong: milliseconds → `UTCTimestamp` seconds, flooring rather
+than rounding, dropping a bucket that closed with null OHLC, and the monotonic-time guard
+that keeps `series.update()` from throwing on an out-of-order frame after a reconnect —
+including the fact that the guard's watermark must not advance on a rejected bucket.
+
 ## Where does a new test go?
 
 - Byte layout / wire change → codec test in `:contracts` (round-trip + unknown-tag).
@@ -149,6 +165,9 @@ arrives.
 - HTTP contract, auth, validation → `:app` slice test with mocked publisher.
 - A full user-visible flow → `:e2e`, only when the flow genuinely spans gateway + engine
   + Kafka; prefer the lower layers otherwise.
+- Frontend logic → vitest next to the module (`src/marketdata/__tests__/`). Keep the
+  logic worth testing in plain `.ts` modules rather than in `.vue` components: mounting a
+  component that creates a chart fails under jsdom, which has no canvas.
 
 ## Known gaps (backlog)
 
@@ -164,5 +183,15 @@ arrives.
   operation of a random command sequence — plus no-negative-balance and
   replay-equivalence; the book could get no-crossed-book properties from the same setup.
 - The WebSocket JSON shape (Jackson serialization of `TradeEvent`/`CancelEvent`) is
-  asserted only by decoding it back in `:e2e`; once the frontend exists, the exact JSON
-  field names become a contract and deserve a pinning test.
+  asserted only by decoding it back in `:e2e`. The frontend now consumes it, so the field
+  names *are* a contract and deserve a pinning test — the same goes for the `Candle`
+  payload on `/marketdata/candles`, which the chart maps field-by-field with nothing
+  guarding a rename on either side.
+- **The candle projection is untested.** Bucket boundaries, roll-over, replay determinism
+  and the (still absent) upsert are exactly the logic that property/unit tests are cheap
+  for: feed a fixed list of `TradeEvent`s at chosen timestamps and assert the emitted
+  candles. Doing this would have caught the wall-clock `bucketStart` immediately.
+- Frontend coverage stops at the pure mapping layer. Nothing exercises the WebSocket
+  lifecycle (reconnect, `disposed` guard) or the chart wiring — that needs either a fake
+  `WebSocket` or a browser-mode runner, since `lightweight-charts` needs a real canvas and
+  throws under jsdom.

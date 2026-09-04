@@ -28,25 +28,8 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
-import {
-  createChart,
-  CandlestickSeries,
-  type IChartApi,
-  type ISeriesApi,
-  type UTCTimestamp,
-} from 'lightweight-charts'
-
-interface CandleMessage {
-  intervalSeconds: number
-  bucketStart: number
-  open: number | null
-  high: number | null
-  low: number | null
-  close: number | null
-  volume: number
-  tradeCount: number
-  lastSeq: number | null
-}
+import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
+import { createBarStream, type CandleMessage } from './marketdata/candles'
 
 const WS_URL = `${import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'}/marketdata/candles`
 
@@ -56,32 +39,17 @@ const series = shallowRef<ISeriesApi<'Candlestick'>>()
 const status = shallowRef<'connecting' | 'open' | 'closed'>('connecting')
 const received = shallowRef(0)
 
+const nextBar = createBarStream()
+
 let socket: WebSocket | undefined
 let reconnectTimer: number | undefined
 let disposed = false
-let lastTime = 0
 
 function onCandle(message: CandleMessage) {
-  if (
-    message.open === null ||
-    message.high === null ||
-    message.low === null ||
-    message.close === null
-  ) {
-    return
-  }
+  const bar = nextBar(message)
+  if (bar === null) return
 
-  const time = Math.floor(message.bucketStart / 1000) as UTCTimestamp
-  if (time < lastTime) return
-  lastTime = time
-
-  series.value?.update({
-    time,
-    open: message.open,
-    high: message.high,
-    low: message.low,
-    close: message.close,
-  })
+  series.value?.update(bar)
   received.value += 1
 }
 
