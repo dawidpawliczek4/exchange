@@ -8,5 +8,6 @@ What they measure, the results so far, and how much to trust them:
 [analysis/README.md](analysis/README.md).
 
 Note: a bare `./gradlew :benchmark:jmh` runs **both** harnesses — `LatencyBenchmark`'s
-`@Fork(10)` adds ~half an hour. `results/` and `figures/` are committed archives; add new
-dated runs, never overwrite.
+`@Fork(10)` adds ~half an hour. `results/` is a committed archive; add new dated runs,
+never overwrite. `figures/` is gitignored — regenerate it from `results/` with the plot
+scripts in `analysis/`.

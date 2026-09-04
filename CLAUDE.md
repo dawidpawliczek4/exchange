@@ -29,7 +29,7 @@ just compose-up / just demo / just compose-reset   # full stack in Docker
 
 CI (`.github/workflows/ci.yml`) is `./gradlew build` on JDK 25; `build` fails on formatting violations.
 
-Careful with `./gradlew :benchmark:jmh`: a bare run executes **both** harnesses, and `LatencyBenchmark`'s `@Fork(10)` adds ~30 minutes. See `docs/benchmarking.md` before running or editing benchmarks — `benchmark/results/` and `benchmark/figures/` are committed archives backing thesis numbers; never delete or overwrite them.
+Careful with `./gradlew :benchmark:jmh`: a bare run executes **both** harnesses, and `LatencyBenchmark`'s `@Fork(10)` adds ~30 minutes. See `docs/benchmarking.md` before running or editing benchmarks — `benchmark/results/` is a committed archive backing thesis numbers; never delete or overwrite it. `benchmark/figures/` is **not** committed (gitignored): the plots are regenerated from `results/` by `benchmark/analysis/plot_spread.py` and `plot_latency.py`, whose `requirements.txt` is version-pinned so the output stays reproducible.
 
 ## Architecture
 

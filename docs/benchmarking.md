@@ -5,9 +5,13 @@ numbers, and what follows for the thesis. Sources: code in `benchmark/src/jmh/`,
 `benchmark/results/`, pipeline in `benchmark/analysis/` (usage:
 [benchmark/analysis/README.md](../benchmark/analysis/README.md)).
 
-**`benchmark/results/` and `benchmark/figures/` are committed archives.** They are the
-provenance trail for thesis numbers — never delete or regenerate them casually, and never
-overwrite an existing dated run; add a new dated directory/file instead.
+**`benchmark/results/` is a committed archive.** It is the provenance trail for thesis
+numbers — never delete it, and never overwrite an existing dated run; add a new dated
+directory/file instead. **`benchmark/figures/` is gitignored, not archived** — the plots
+are pure derivatives of `results/`, regenerated on demand by the two plot scripts (a
+byte-comparison confirmed the committed figures were reproducible from the committed data,
+modulo matplotlib's random element ids and embedded timestamp). `requirements.txt` pins
+matplotlib exactly so that stays true over the life of the thesis.
 
 ## 1. What exists
 
@@ -27,7 +31,7 @@ invocation (`Level.Invocation`), `spread ∈ {10, 100, 1000, 10000}`.
 Analysis pipeline: `gradlew :benchmark:jmh` → `results.json` (ephemeral, in `build/`) →
 `jmh_to_csv.py` → CSV with environment metadata (commit, JDK, flags, machine) in
 `benchmark/results/` (committed) → `plot_spread.py` → SVG/PDF figures in
-`benchmark/figures/`.
+`benchmark/figures/` (regenerated on demand, not committed).
 
 ## 2. Results: degradation with book width
 
@@ -75,7 +79,7 @@ incarnation. Construction:
 - **Output**: one HdrHistogram interval log per measured iteration
   (`results/<date>_<run>/latency-p<period>-f<pid>-i<NN>.hlog`), merged exactly
   (histogram `add()`, not averaging of percentile tables) by `plot_latency.py` into a
-  latency-vs-percentile figure in `figures/`.
+  latency-vs-percentile figure in `figures/` (regenerated on demand, not committed).
 
 Run `2026-08-27_latency-mac` (M4 Pro, 3 forks × 5 iterations, exploratory):
 

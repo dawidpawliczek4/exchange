@@ -7,8 +7,13 @@ committed. That is what this directory does.
 ```
 gradlew :benchmark:jmh          →  build/results/jmh/results.json   (raw, throwaway)
 jmh_to_csv.py                   →  ../results/<date>_<sweep>.csv    (archival, committed)
-plot_spread.py                  →  ../figures/*.svg + *.pdf         (vector, for LaTeX)
+plot_spread.py                  →  ../figures/*.svg + *.pdf         (derived, gitignored)
 ```
+
+Only the middle row is committed. `../figures/` is gitignored: the plots are a pure
+function of `../results/` plus these scripts, so they are regenerated on demand rather
+than archived. That holds only as long as the toolchain is fixed — hence the exact pins
+in `requirements.txt`; loosen them and the thesis figures stop being reproducible.
 
 The open-loop latency benchmark writes its own archival files directly
 (`LatencyBenchmark` → `../results/<date>_<run>/latency-p*.hlog`, one HdrHistogram

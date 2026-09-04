@@ -1,2 +1,2 @@
-matplotlib>=3.8
-hdrhistogram>=0.10
+matplotlib==3.11.1
+hdrhistogram==0.10.7
