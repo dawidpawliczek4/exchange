@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --color-surface: oklch(0.17 0.006 285);
+  --color-surface-raised: oklch(0.21 0.006 285);
+  --color-border: oklch(0.29 0.006 285);
+  --color-fg: oklch(0.93 0.005 285);
+  --color-fg-muted: oklch(0.68 0.01 285);
+
+  --color-up: oklch(0.72 0.14 170);
+  --color-down: oklch(0.65 0.2 25);
+  --color-accent: oklch(0.72 0.15 250);
+}
+
+@layer base {
+  html {
+    @apply bg-surface text-fg antialiased;
+    color-scheme: dark;
+  }
+  body {
+    @apply font-sans;
+  }
+}
