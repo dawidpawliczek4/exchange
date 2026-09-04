@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createBarStream, toBar, type CandleMessage } from '../candles'
+import { createBarStream, toBar, type CandleMessage } from './candles.ts'
 
 function message(overrides: Partial<CandleMessage> = {}): CandleMessage {
   return {

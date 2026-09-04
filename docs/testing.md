@@ -15,7 +15,7 @@ Testcontainers layers need a running Docker daemon. CI runs the same suite via
 | Service integration | `:matching-service` (`MatchingRunnerIntegrationTest`) | Testcontainers Kafka | ~10s+ |
 | Gateway slice | `:app` (controller tests) | `@SpringBootTest` + Testcontainers Postgres + `@MockitoBean` | seconds |
 | End-to-end | `:e2e` (`TradeFlowE2eTest`) | Testcontainers Kafka + Postgres, gateway booted, runner in-process | ~30s+ |
-| Frontend | `:frontend` (`src/marketdata/__tests__/`) | vitest + jsdom | ms |
+| Frontend | `:frontend` (test file beside the module, e.g. `src/marketdata/candles.spec.ts`) | vitest + jsdom | ms |
 
 ### Pure unit — contracts, the book, the ledger
 
@@ -148,7 +148,13 @@ under `frontend/src/` fails CI exactly like a Kotlin one.
 
 `lightweight-charts` needs a real canvas and throws under jsdom, so anything worth
 asserting lives in plain `.ts` modules and the `.vue` component keeps only wiring.
-`src/marketdata/__tests__/candles.spec.ts` covers the WebSocket-to-chart conversions that
+Test files live **next to the file under test, not in a `__tests__/` directory** — the
+test for `src/marketdata/candles.ts` is `src/marketdata/candles.spec.ts`, the test for
+`src/auth/AuthLogin.vue` is `src/auth/AuthLogin.test.ts`. Both `.spec.ts` and `.test.ts`
+are picked up by vitest's default include pattern; keep a new file's suffix consistent
+with its neighbours rather than renaming what is already there.
+
+`src/marketdata/candles.spec.ts` covers the WebSocket-to-chart conversions that
 are easy to get silently wrong: milliseconds → `UTCTimestamp` seconds, flooring rather
 than rounding, dropping a bucket that closed with null OHLC, and the monotonic-time guard
 that keeps `series.update()` from throwing on an out-of-order frame after a reconnect —
@@ -165,7 +171,8 @@ including the fact that the guard's watermark must not advance on a rejected buc
 - HTTP contract, auth, validation → `:app` slice test with mocked publisher.
 - A full user-visible flow → `:e2e`, only when the flow genuinely spans gateway + engine
   + Kafka; prefer the lower layers otherwise.
-- Frontend logic → vitest next to the module (`src/marketdata/__tests__/`). Keep the
+- Frontend logic → vitest in a file beside the module, never in a `__tests__/` folder
+  (`candles.ts` → `candles.spec.ts`, `AuthLogin.vue` → `AuthLogin.test.ts`). Keep the
   logic worth testing in plain `.ts` modules rather than in `.vue` components: mounting a
   component that creates a chart fails under jsdom, which has no canvas.
 
