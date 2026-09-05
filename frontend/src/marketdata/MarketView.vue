@@ -1,5 +1,5 @@
 <template>
-  <main class="flex h-dvh flex-col bg-[#101014] text-[#d1d4dc]">
+  <main class="flex h-full flex-col bg-[#101014] text-[#d1d4dc]">
     <header class="flex items-center gap-3 px-4 py-2 text-sm">
       <span class="font-semibold">BASE/QUOTE</span>
       <span
@@ -31,7 +31,9 @@
         </template>
       </nav>
     </header>
-    <div ref="containerEl" class="min-h-0 flex-1"></div>
+    <section class="min-h-0 flex-1 ml-4 mt-6">
+      <div ref="containerEl" class="h-1/2"></div>
+    </section>
   </main>
 </template>
 
