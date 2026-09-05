@@ -326,9 +326,32 @@ Tailwind 4 is wired through the `@tailwindcss/vite` plugin, whose entry point is
 file, not a config file — `src/assets/main.css` holds `@import "tailwindcss";` and
 `main.ts` imports it. There is no `tailwind.config.js` (v4 configures the theme in CSS).
 
-`App.vue` keeps only wiring: create the chart in `onMounted`, open the candle WebSocket,
-reconnect after 2s unless unmounted, `chart.remove()` in `onUnmounted`. The chart instance
-lives in a `shallowRef` — a deep `ref` would proxy the library's internal canvases.
+`App.vue` is only a `<RouterView>` shell; `vue-router` maps `/` to
+`src/marketdata/MarketView.vue` and `/login`, `/register` to the auth views.
+`MarketView.vue` keeps only wiring: create the chart in `onMounted`, open the candle
+WebSocket, reconnect after 2s unless unmounted, `chart.remove()` in `onUnmounted`. The
+chart instance lives in a `shallowRef` — a deep `ref` would proxy the library's internal
+canvases.
+
+REST goes through one axios instance (`src/shared/http.ts`) with `baseURL` from
+`VITE_API_URL`, defaulting to `/api`, which the Vite dev server proxies to
+`localhost:8080` with the prefix stripped — so the browser never needs CORS in
+development. The request interceptor attaches the access token from `localStorage`; the
+response interceptor turns a 401 into one refresh (`/auth/session/refresh`, deduplicated
+across concurrent requests) and a retry, then clears the tokens and routes to `/login` if
+the refresh fails. Auth endpoints themselves are exempt, so a failed login surfaces its own
+401 instead of triggering a refresh. Errors are decoded once, in
+`src/shared/apiError.ts`: a gateway `ProblemDetail` becomes `{status, message, fields}` —
+`message` from `detail` (falling back to `title`), `fields` from the validation `errors`
+list keyed by field — and anything without a response becomes a network error.
+`safeRequest` wraps an axios call into a `Result` so the auth store never throws.
+
+The auth pages share `AuthForm.vue` and the `useAuthForm` composable: zod schemas in
+`src/auth/validation.ts` mirror the gateway's rules (login checks presence only,
+registration also enforces the 8–72 password length), and server field errors land under
+the same inputs as local ones. Tokens live in `localStorage` via `useLocalStorage`
+(`src/auth/store.ts`, Pinia); `isAuthenticated` is derived from the presence of the access
+token — there is no `/me` endpoint yet.
 
 The conversion itself is `src/marketdata/candles.ts`, deliberately a plain module with no
 DOM: `lightweight-charts` needs a real canvas and throws under jsdom, so keeping the logic

@@ -1,9 +1,11 @@
-import axios, { type AxiosResponse } from 'axios'
+import axios from 'axios'
 import router from '@/router'
-import {ACCESS_KEY, REFRESH_KEY} from "@/shared/localStorage.ts";
+import { ACCESS_KEY, REFRESH_KEY } from '@/shared/localStorage'
+
+export const API_URL: string = import.meta.env.VITE_API_URL ?? '/api'
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? '',
+  baseURL: API_URL,
   timeout: 10_000,
 })
 
@@ -17,7 +19,7 @@ http.interceptors.response.use(
   (r) => r,
   async (error) => {
     const original = error.config
-    if (error.response?.status !== 401 || original._retry) {
+    if (error.response?.status !== 401 || original._retry || original.url?.startsWith('/auth/')) {
       return Promise.reject(error)
     }
     original._retry = true

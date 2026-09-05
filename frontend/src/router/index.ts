@@ -5,7 +5,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      component: () => import('@/App.vue')
+      component: () => import('@/marketdata/MarketView.vue'),
     },
     {
       path: '/login',

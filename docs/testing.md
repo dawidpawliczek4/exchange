@@ -15,7 +15,7 @@ Testcontainers layers need a running Docker daemon. CI runs the same suite via
 | Service integration | `:matching-service` (`MatchingRunnerIntegrationTest`) | Testcontainers Kafka | ~10s+ |
 | Gateway slice | `:app` (controller tests) | `@SpringBootTest` + Testcontainers Postgres + `@MockitoBean` | seconds |
 | End-to-end | `:e2e` (`TradeFlowE2eTest`) | Testcontainers Kafka + Postgres, gateway booted, runner in-process | ~30s+ |
-| Frontend | `:frontend` (test file beside the module, e.g. `src/marketdata/candles.spec.ts`) | vitest + jsdom | ms |
+| Frontend | `:frontend` (test file beside the module, e.g. `src/marketdata/candles.test.ts`) | vitest + jsdom | ms |
 
 ### Pure unit — contracts, the book, the ledger
 
@@ -149,16 +149,26 @@ under `frontend/src/` fails CI exactly like a Kotlin one.
 `lightweight-charts` needs a real canvas and throws under jsdom, so anything worth
 asserting lives in plain `.ts` modules and the `.vue` component keeps only wiring.
 Test files live **next to the file under test, not in a `__tests__/` directory** — the
-test for `src/marketdata/candles.ts` is `src/marketdata/candles.spec.ts`, the test for
-`src/auth/AuthLogin.vue` is `src/auth/AuthLogin.test.ts`. Both `.spec.ts` and `.test.ts`
-are picked up by vitest's default include pattern; keep a new file's suffix consistent
-with its neighbours rather than renaming what is already there.
+test for `src/marketdata/candles.ts` is `src/marketdata/candles.test.ts`, the test for
+`src/auth/AuthLogin.vue` is `src/auth/AuthLogin.test.ts`. Vitest's default include pattern
+picks up both `.spec.ts` and `.test.ts`, but this repo uses `.test.ts` throughout —
+rename anything a scaffold generates as `.spec.ts`.
 
-`src/marketdata/candles.spec.ts` covers the WebSocket-to-chart conversions that
+`src/marketdata/candles.test.ts` covers the WebSocket-to-chart conversions that
 are easy to get silently wrong: milliseconds → `UTCTimestamp` seconds, flooring rather
 than rounding, dropping a bucket that closed with null OHLC, and the monotonic-time guard
 that keeps `series.update()` from throwing on an out-of-order frame after a reconnect —
 including the fact that the guard's watermark must not advance on a rejected bucket.
+
+The auth side follows the same split. `src/shared/apiError.test.ts` pins the
+`ProblemDetail` decoding (`detail` before `title` before a status fallback, the first
+validation message per field wins, no response means a network error) and
+`src/auth/validation.test.ts` pins the zod schemas against the gateway's rules. Mounting
+is fine here — no canvas involved — so `src/auth/AuthLogin.test.ts` mounts the real
+component with the store and router mocked (`vi.mock('@/auth/store')`,
+`vi.mock('@/router')`) and asserts the four outcomes of a submit: local validation blocks
+the call, success navigates to `/`, a `message`-only error renders as the form error, and
+server field errors render under their inputs with no form-level message.
 
 ## Where does a new test go?
 
@@ -172,7 +182,7 @@ including the fact that the guard's watermark must not advance on a rejected buc
 - A full user-visible flow → `:e2e`, only when the flow genuinely spans gateway + engine
   + Kafka; prefer the lower layers otherwise.
 - Frontend logic → vitest in a file beside the module, never in a `__tests__/` folder
-  (`candles.ts` → `candles.spec.ts`, `AuthLogin.vue` → `AuthLogin.test.ts`). Keep the
+  (`candles.ts` → `candles.test.ts`, `AuthLogin.vue` → `AuthLogin.test.ts`). Keep the
   logic worth testing in plain `.ts` modules rather than in `.vue` components: mounting a
   component that creates a chart fails under jsdom, which has no canvas.
 
