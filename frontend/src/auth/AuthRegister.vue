@@ -7,7 +7,7 @@
     :submit="auth.register"
   >
     Already registered?
-    <RouterLink to="/login" class="text-emerald-400 hover:underline">Sign in</RouterLink>
+    <RouterLink to="/login" class="text-primary hover:underline">Sign in</RouterLink>
   </AuthForm>
 </template>
 

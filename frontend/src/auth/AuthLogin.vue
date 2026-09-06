@@ -7,7 +7,7 @@
     :submit="auth.login"
   >
     No account yet?
-    <RouterLink to="/register" class="text-emerald-400 hover:underline">Register</RouterLink>
+    <RouterLink to="/register" class="text-primary hover:underline">Register</RouterLink>
   </AuthForm>
 </template>
 

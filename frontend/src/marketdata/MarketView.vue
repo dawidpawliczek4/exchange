@@ -31,7 +31,7 @@
         </template>
       </nav>
     </header>
-    <section class="min-h-0 flex-1 ml-4 mt-6">
+    <section class="mt-6 ml-4 min-h-0 flex-1">
       <div ref="containerEl" class="h-1/2"></div>
     </section>
   </main>

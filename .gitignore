@@ -62,3 +62,6 @@ override.tf.json
 .terraformrc
 terraform.rc
 tfplan
+
+### Claude Code ###
+.claude/
