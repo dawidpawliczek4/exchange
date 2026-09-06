@@ -13,23 +13,6 @@
         {{ status }}
       </span>
       <span class="text-xs text-neutral-500">{{ received }} candles</span>
-      <nav class="ml-auto flex items-center gap-3 text-xs">
-        <button
-          v-if="auth.isAuthenticated"
-          class="text-neutral-400 hover:text-neutral-200"
-          @click="auth.logout()"
-        >
-          Log out
-        </button>
-        <template v-else>
-          <RouterLink to="/login" class="text-neutral-400 hover:text-neutral-200"
-            >Sign in</RouterLink
-          >
-          <RouterLink to="/register" class="text-neutral-400 hover:text-neutral-200"
-            >Register</RouterLink
-          >
-        </template>
-      </nav>
     </header>
     <section class="mt-6 ml-4 min-h-0 flex-1">
       <div ref="containerEl" class="h-1/2"></div>
@@ -41,7 +24,6 @@
 import { onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
 import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
 import { createBarStream, type CandleMessage } from './candles'
-import { useAuthStore } from '@/auth/store'
 
 const WS_URL = `${import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'}/marketdata/candles`
 
@@ -51,7 +33,6 @@ const series = shallowRef<ISeriesApi<'Candlestick'>>()
 const status = shallowRef<'connecting' | 'open' | 'closed'>('connecting')
 const received = shallowRef(0)
 
-const auth = useAuthStore()
 const nextBar = createBarStream()
 
 let socket: WebSocket | undefined
