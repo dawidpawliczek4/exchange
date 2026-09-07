@@ -15,7 +15,9 @@ cd frontend && pnpm dev             # trading UI on :5173 with HMR
 ```
 
 The gateway needs **both** Kafka and Postgres: Flyway runs `V1__init.sql` and Hibernate
-validates the schema at boot. The matching service needs only Kafka and writes its WAL to
+validates the schema at boot. "Postgres" is the TimescaleDB image everywhere (Compose,
+k8s, Testcontainers) — `V1` creates the extension, the `trades` hypertable and the
+`candles_5s` continuous aggregate, so a plain `postgres` image fails at boot. The matching service needs only Kafka and writes its WAL to
 `./journal.bin` in the working directory. The crowd needs only Kafka (and a running
 matching service to trade against). Crowd knobs, all env vars with defaults:
 `BOT_COUNT` (100), `MID_PRICE` (10000), `PRICE_BAND` (100), `SEED` (42).
@@ -49,7 +51,8 @@ Seven services (`devops/docker-compose.yml`, project name `exchange`): Kafka
 volume at `/data`, `restart: on-failure`), `gateway` (`devops/app.Dockerfile`, :8080,
 waits for Kafka + Postgres healthchecks), `crowd` (`devops/agent-crowd.Dockerfile`, no
 ports or volumes, `restart: on-failure`; the bot crowd trades from the moment the stack
-is up), `postgres` (:5432, db/user/password all `exchange`), `prometheus` (:9090),
+is up), `postgres` (`timescale/timescaledb`, :5432, db/user/password all `exchange`),
+`prometheus` (:9090),
 `grafana` (:3000, anonymous viewer).
 
 The crowd's knobs are interpolated from the shell with the same defaults as the app, so
@@ -60,15 +63,18 @@ not in the k8s manifests yet.
 
 Five named volumes: `journal`, `pgdata`, `kafkadata`, `promdata`, `grafanadata`. The
 journal volume is why the book survives container restarts — and why upgrading across an
-incompatible WAL format change requires `just compose-reset` (or `down -v`).
+incompatible WAL format change requires `just compose-reset` (or `down -v`). The same
+reset applies to `pgdata` after a change to `V1__init.sql` or to the database image:
+there is only one migration and no deployment to migrate, so schema changes are made by
+editing it and starting from an empty volume.
 
 Kafka bootstrap overrides (all default to `localhost:9092`):
 
-| Service | Env var |
-|---|---|
-| matching service | `KAFKA_BOOTSTRAP_SERVERS` |
-| agent crowd | `KAFKA_BOOTSTRAP_SERVERS` |
-| gateway | `SPRING_KAFKA_BOOTSTRAP_SERVERS` |
+| Service          | Env var                          |
+|------------------|----------------------------------|
+| matching service | `KAFKA_BOOTSTRAP_SERVERS`        |
+| agent crowd      | `KAFKA_BOOTSTRAP_SERVERS`        |
+| gateway          | `SPRING_KAFKA_BOOTSTRAP_SERVERS` |
 
 Gateway database config: `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD`
 (default `jdbc:postgresql://localhost:5432/exchange`, `exchange`/`exchange`).
@@ -134,9 +140,9 @@ destroy` when done.
 
 ## Resetting state
 
-| What | How |
-|---|---|
-| Everything under Compose | `just compose-reset` |
-| Just the WAL (local dev) | delete `journal.bin` |
-| kind cluster | `just down` |
-| GCP | `terraform destroy` in `infra/gcp/` |
+| What                     | How                                 |
+|--------------------------|-------------------------------------|
+| Everything under Compose | `just compose-reset`                |
+| Just the WAL (local dev) | delete `journal.bin`                |
+| kind cluster             | `just down`                         |
+| GCP                      | `terraform destroy` in `infra/gcp/` |

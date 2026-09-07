@@ -182,5 +182,5 @@ Kafka bootstrap defaults to `localhost:9092`; Compose wires the services to the 
 ---
 ## Tech stack
 
-Java 25 · Kotlin · Spring Boot 4 · Apache Kafka · Micrometer + Prometheus + Grafana · Gradle
-(multi-module, version catalog, convention plugins) · JMH · JUnit 5.
+Java 25 · Kotlin · Spring Boot 4 · Apache Kafka · TimescaleDB · Micrometer + Prometheus +
+Grafana · Gradle (multi-module, version catalog, convention plugins) · JMH · JUnit 5.

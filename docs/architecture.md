@@ -11,9 +11,9 @@ single-writer engine, and durability/recovery. For how to *run* it, see
 gateway (:app) · bot crowd (:agent-crowd)
   → Kafka orders.commands
   → matching-service  [decode → OrderService (WAL → match/ledger) → events]
-  → Kafka orders.trades   (market events) → gateway ┬→ /marketdata WebSocket          ┐
-                                                    └→ candle projection              ├→ :frontend
-                                                       → /marketdata/candles WebSocket┘
+  → Kafka orders.trades   (market events) → gateway ┬→ /marketdata WebSocket                ┐
+                                                    └→ trades hypertable (TimescaleDB)      ├→ :frontend
+                                                       → candles_5s → GET /marketdata/candles┘
   → Kafka account.events  (private account events, keyed by userId; no consumer yet)
 ```
 
@@ -23,16 +23,16 @@ Kafka/HTTP.
 
 ## Modules
 
-| Module              | Language                        | Role                                                                                                |
-|---------------------|---------------------------------|-----------------------------------------------------------------------------------------------------|
-| `:contracts`        | Java                            | Wire truth: shared types + the two Kafka codecs                                                     |
-| `:engine`           | Java (`java-library`)           | Matching core: order book, single-writer service, WAL codec                                         |
-| `:matching-service` | Kotlin (application)            | Hosts the engine off Kafka; owns metrics                                                            |
-| `:app`              | Kotlin + Spring Boot 4          | Gateway: REST + JWT in, WebSocket market data out                                                   |
-| `:agent-crowd`      | Kotlin (application)            | Bot crowd: seeded zero-intelligence traders producing straight to Kafka                             |
-| `:frontend`         | Vue 3 + TypeScript (Vite, pnpm) | Trading UI: candlestick chart off the candle WebSocket. `node-gradle` drives pnpm so `./gradlew build` covers it. Not yet served by the gateway |
-| `:benchmark`        | Java + JMH                      | Engine measurement harnesses ([benchmarking.md](benchmarking.md))                                   |
-| `:e2e`              | Kotlin (tests only)             | Full-stack test: Testcontainers Kafka + Postgres, gateway + runner in-process                       |
+| Module              | Language                        | Role                                                                                                                                                                 |
+|---------------------|---------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `:contracts`        | Java                            | Wire truth: shared types + the two Kafka codecs                                                                                                                      |
+| `:engine`           | Java (`java-library`)           | Matching core: order book, single-writer service, WAL codec                                                                                                          |
+| `:matching-service` | Kotlin (application)            | Hosts the engine off Kafka; owns metrics                                                                                                                             |
+| `:app`              | Kotlin + Spring Boot 4          | Gateway: REST + JWT in, WebSocket market data out, trades tape + candle history in TimescaleDB                                                                       |
+| `:agent-crowd`      | Kotlin (application)            | Bot crowd: seeded zero-intelligence traders producing straight to Kafka                                                                                              |
+| `:frontend`         | Vue 3 + TypeScript (Vite, pnpm) | Trading UI: candlestick chart from candle history + the raw trade WebSocket. `node-gradle` drives pnpm so `./gradlew build` covers it. Not yet served by the gateway |
+| `:benchmark`        | Java + JMH                      | Engine measurement harnesses ([benchmarking.md](benchmarking.md))                                                                                                    |
+| `:e2e`              | Kotlin (tests only)             | Full-stack test: Testcontainers Kafka + TimescaleDB, gateway + runner in-process                                                                                     |
 
 Dependency rules: `:engine` depends on `:contracts` via `api` (not `implementation`)
 because contract types appear in the engine's public API (`OrderCommand` in
@@ -250,10 +250,13 @@ Package root is `com.dawidpawliczek.app`; source directories under
   `POST /auth/credentials/register|login` and `/auth/session/refresh|logout` are public
   and return access+refresh tokens; order endpoints require `Authorization: Bearer` and
   take `userId` from the token, never the body. `/marketdata/**` and `/actuator/**` are
-  public — the pattern must stay a prefix match, because the WebSocket handshake for the
-  candle endpoint is a plain HTTP GET that the filter chain sees. Users/credentials/sessions
+  public — the pattern must stay a prefix match, because the WebSocket handshake for
+  `/marketdata` is a plain HTTP GET that the filter chain sees. Users/credentials/sessions
   live in Postgres via Flyway (`db/migration/V1__init.sql`, `ddl-auto: validate`) — the
-  gateway won't boot without a reachable database.
+  gateway won't boot without a reachable database. The database is TimescaleDB
+  ([ADR-0007](adr/0007-candles-from-trades-tape-in-timescaledb.md)); `V1` creates the
+  extension and runs outside a transaction (`V1__init.sql.conf`) because a continuous
+  aggregate cannot be created inside one.
 - **Errors** (`error/`): every failure is an RFC 9457 `ProblemDetail`
   (`application/problem+json`; `status`/`title`/`detail`, validation adds an `errors`
   list of `{field, message}`), produced by one `ApiExceptionHandler`
@@ -263,7 +266,8 @@ Package root is `com.dawidpawliczek.app`; source directories under
   `ErrorAttributes` override. Unhandled exceptions become a 500 with no `detail` — the
   message is logged, never returned.
 - **Market data** (`marketData/`, hexagonal like `order/`): two independent consumers of
-  `orders.trades` feeding two WebSocket endpoints. See below.
+  `orders.trades` — one fans out to the `/marketdata` WebSocket, one appends to the
+  `trades` hypertable that backs `GET /marketdata/candles`. See below.
 
 ### Market data (`marketData/`)
 
@@ -273,47 +277,47 @@ application, called by the Kafka adapter, takes a `MarketEvent`) and
 already-serialized `String`). Serialization is the application's job, transport is the
 adapter's — the broadcaster knows nothing about `:contracts`.
 
-`WebSocketConfig` registers **two** `WebSocketBroadcaster` beans (`marketDataBroadcaster`,
-`candleBroadcaster`), each with its own session set, and maps them to different paths. The
-class carries no `@Component`; both instances are declared as `@Bean`s, and consumers pick
-one with `@Qualifier`. `WebSocketSession.sendMessage` is not thread-safe and the loop has
-no per-session error handling yet — a dead client aborts the rest of the broadcast.
+`WebSocketConfig` declares the single `WebSocketBroadcaster` as a `@Bean`
+(`marketDataBroadcaster`; the class carries no `@Component`) and maps it to `/marketdata`.
+`WebSocketSession.sendMessage` is not thread-safe and the loop has no per-session error
+handling yet — a dead client aborts the rest of the broadcast.
 
-| Endpoint | Consumer | Group | Offset reset | Payload |
-|---|---|---|---|---|
-| `/marketdata` | `KafkaMarketFeedSubscriber` | `gateway-${HOSTNAME:uuid}` (ephemeral) | `latest` | JSON `TradeEvent` / `CancelEvent`, one frame per event |
-| `/marketdata/candles` | `KafkaCandleProjectionSubscriber` | `gateway-candles` (stable) | `earliest` | JSON `Candle`, one frame per closed bucket |
+| Consumer                    | Group                                  | Offset reset | Sink                                                                            |
+|-----------------------------|----------------------------------------|--------------|---------------------------------------------------------------------------------|
+| `KafkaMarketFeedSubscriber` | `gateway-${HOSTNAME:uuid}` (ephemeral) | `latest`     | `/marketdata` WebSocket: JSON `TradeEvent` / `CancelEvent`, one frame per event |
+| `KafkaTradeTapeSubscriber`  | `gateway-trades` (stable)              | `earliest`   | `trades` hypertable, one batch insert per poll                                  |
 
 The two group ids encode the difference in intent. The raw feed is stateless fan-out: a
 fresh instance wants only what happens from now on, so the group is per-instance and
-discarded. The projection must see every trade exactly once across restarts, so its group
+discarded. The tape must contain every trade exactly once across restarts, so its group
 is stable and `earliest` only applies the first time it runs.
 
-### Candle projection — work in progress
+### Trades tape and candles ([ADR-0007](adr/0007-candles-from-trades-tape-in-timescaledb.md))
 
-`CandleProjectionService` accumulates an OHLCV bucket in memory and broadcasts it when a
-trade crosses the bucket boundary. The `candles` table exists in `V1__init.sql`
-(`PRIMARY KEY (interval_seconds, bucket_start)`, plus `last_seq` as the idempotency guard
-for a replace-on-conflict upsert), but **nothing writes to it yet** and there is no read
-endpoint — the chart currently fills only from live WebSocket frames.
+`KafkaTradeTapeSubscriber` is a batch listener: one `poll()` becomes one
+`RecordTrades.record(events)` call, `TradeTapeService` keeps the `TradeEvent`s (cancels
+are not part of the tape) and `JdbcTradeStore` writes them with a single
+`JdbcTemplate.batchUpdate` — `INSERT ... ON CONFLICT DO NOTHING` on the primary key
+`(ts, seq)`. The offset is committed after the listener returns (default `AckMode.BATCH`),
+so a crash between insert and commit redelivers a batch the key already rejects:
+at-least-once delivery plus an idempotent sink is the "exactly-once effect" ADR-0006
+assumes of every projection. `ts` is `event.timestamp` as `TIMESTAMPTZ`; the row also
+carries both order ids and both user ids, so the table is the raw tape for later analysis.
 
-Known deviations from the intended design, all in `CandleProjectionService`:
+Candles are not stored, they are the continuous aggregate `candles_5s` in `V1__init.sql`:
+`time_bucket('5 seconds', ts)`, `first(price, seq)` / `last(price, seq)` for open/close,
+`sum(quantity)` as `volume`, `sum(quantity * price)` as `quote_volume`, `count(*)` as
+`trade_count`. Real-time aggregation is on (`materialized_only = false`), so a query sees
+the bucket still being written by unioning the raw tail above the materialization
+watermark; the refresh policy (`start_offset` NULL, `end_offset` 10 s, every 15 s)
+materializes everything else, including old trades replayed after downtime. Empty
+buckets simply do not exist as rows.
 
-- `bucketStart` comes from `System.currentTimeMillis()` at object construction instead of
-  from `event.timestamp`. A projection must be a pure function of the event stream, or
-  replaying the same log twice produces different candles. It also breaks the `earliest`
-  replay outright: historical events never exceed a boundary measured from process start,
-  so the whole backlog collapses into one bucket that never closes.
-- Buckets are not aligned to an epoch grid (`floorDiv(ts, intervalMs) * intervalMs`), so
-  boundaries shift on every restart and 1s candles cannot be rolled up into 1m ones.
-- Only one boundary crossing is handled per event, so quiet periods silently drop the
-  buckets in between. Empty buckets are intended to be filled at *read* time from the
-  previous close, never persisted.
-- `volume` accumulates `quantity × price` (quote volume) under a name that conventionally
-  means base volume (`Σ quantity`). Both are wanted; neither derives from the other.
-- Offsets are committed per batch, not per closed bucket, so a crash mid-bucket loses it —
-  the consumer resumes past trades whose candle was never persisted. Acking at bucket
-  close would make the offset an honest checkpoint.
+`GET /marketdata/candles?from&to` (epoch millis, both optional: default the last hour,
+at most 24 hours, `from < to` or 400) runs `JdbcCandleRepository`'s range select on the
+view (`JdbcClient`, no JPA entity — a view has nothing for `ddl-auto: validate` to check)
+and returns `Candle` rows with `bucketStart` in **milliseconds**. `CandleHistoryTest`
+pins the aggregate's arithmetic and the idempotent insert against the real container.
 
 ## `:frontend` — the trading UI
 
@@ -328,10 +332,11 @@ file, not a config file — `src/assets/main.css` holds `@import "tailwindcss";`
 
 `App.vue` is only a `<RouterView>` shell; `vue-router` maps `/` to
 `src/marketdata/MarketView.vue` and `/login`, `/register` to the auth views.
-`MarketView.vue` keeps only wiring: create the chart in `onMounted`, open the candle
-WebSocket, reconnect after 2s unless unmounted, `chart.remove()` in `onUnmounted`. The
-chart instance lives in a `shallowRef` — a deep `ref` would proxy the library's internal
-canvases.
+`MarketView.vue` keeps only wiring: create the chart in `onMounted`, load candle history
+over REST into `series.setData()`, then open the raw `/marketdata` WebSocket and extend
+the last bar from each trade; reconnect after 2s unless unmounted (reloading history
+first, so the gap is filled), `chart.remove()` in `onUnmounted`. The chart instance lives
+in a `shallowRef` — a deep `ref` would proxy the library's internal canvases.
 
 REST goes through one axios instance (`src/shared/http.ts`) with `baseURL` from
 `VITE_API_URL`, defaulting to `/api`, which the Vite dev server proxies to
@@ -355,17 +360,15 @@ token — there is no `/me` endpoint yet.
 
 The conversion itself is `src/marketdata/candles.ts`, deliberately a plain module with no
 DOM: `lightweight-charts` needs a real canvas and throws under jsdom, so keeping the logic
-out of the component is what makes it testable. `createBarStream()` returns a stateful
-mapper enforcing three rules, each of which is a real failure mode rather than defensive
-padding:
-
-- `bucketStart` is **milliseconds**, `UTCTimestamp` is **seconds** — floored, not rounded.
-- `series.update()` throws on a bar older than the last one, so an out-of-order frame
-  (a reconnect replaying a bucket) is dropped rather than passed through. Equal times are
-  allowed: `update()` upserts the last bar, which is how an in-progress bucket would be
-  refined.
-- A candle whose OHLC is still null is skipped — reachable today, because the projection's
-  very first bucket can close without ever seeing a trade.
+out of the component is what makes it testable. `toBar` maps a history row
+(`bucketStart` **milliseconds** → `UTCTimestamp` **seconds**, floored) and `applyTrade`
+is the client-side half of the candle definition: it buckets a trade's `timestamp` on the
+same epoch grid as `time_bucket('5 seconds')`, extends the open bar when the trade lands
+in it, opens a new one when it crosses the boundary, and returns the current bar untouched
+for a trade older than it — `series.update()` throws on a bar older than the last one.
+`isTrade` tells trade frames from cancel frames, which share the socket and carry no type
+discriminator. The two halves must agree: a drifted rule shows as a last bar that
+disagrees with history after a reload.
 
 Prices render as raw integers (`precision: 0`) because no minor-unit scale has been fixed
 anywhere in the system yet; when one is, this becomes `precision: 2, minMove: 0.01` plus a

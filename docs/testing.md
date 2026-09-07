@@ -7,15 +7,15 @@ Testcontainers layers need a running Docker daemon. CI runs the same suite via
 
 ## The layers
 
-| Layer | Where | Tools | Speed |
-|---|---|---|---|
-| Pure unit | `:contracts`, `:engine` (`OrderBookTest`, `LedgerTest`, `WalCodecTest`, codec tests) | JUnit 5 only | ms |
-| Engine service | `:engine` (`OrderServiceTest`) | JUnit 5 + hand-written doubles | ms (real writer thread) |
-| Adapter | `:matching-service` (`FileCommandLogTest`) | JUnit 5 + `@TempDir` | ms (real file I/O) |
-| Service integration | `:matching-service` (`MatchingRunnerIntegrationTest`) | Testcontainers Kafka | ~10s+ |
-| Gateway slice | `:app` (controller tests) | `@SpringBootTest` + Testcontainers Postgres + `@MockitoBean` | seconds |
-| End-to-end | `:e2e` (`TradeFlowE2eTest`) | Testcontainers Kafka + Postgres, gateway booted, runner in-process | ~30s+ |
-| Frontend | `:frontend` (test file beside the module, e.g. `src/marketdata/candles.test.ts`) | vitest + jsdom | ms |
+| Layer               | Where                                                                                | Tools                                                                 | Speed                   |
+|---------------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------------------|-------------------------|
+| Pure unit           | `:contracts`, `:engine` (`OrderBookTest`, `LedgerTest`, `WalCodecTest`, codec tests) | JUnit 5 only                                                          | ms                      |
+| Engine service      | `:engine` (`OrderServiceTest`)                                                       | JUnit 5 + hand-written doubles                                        | ms (real writer thread) |
+| Adapter             | `:matching-service` (`FileCommandLogTest`)                                           | JUnit 5 + `@TempDir`                                                  | ms (real file I/O)      |
+| Service integration | `:matching-service` (`MatchingRunnerIntegrationTest`)                                | Testcontainers Kafka                                                  | ~10s+                   |
+| Gateway slice       | `:app` (controller tests, `CandleHistoryTest`)                                       | `@SpringBootTest` + Testcontainers TimescaleDB + `@MockitoBean`       | seconds                 |
+| End-to-end          | `:e2e` (`TradeFlowE2eTest`)                                                          | Testcontainers Kafka + TimescaleDB, gateway booted, runner in-process | ~30s+                   |
+| Frontend            | `:frontend` (test file beside the module, e.g. `src/marketdata/candles.test.ts`)     | vitest + jsdom                                                        | ms                      |
 
 ### Pure unit — contracts, the book, the ledger
 
@@ -106,14 +106,23 @@ never on sleeps.
 `:app` tests boot the full Spring context (`@SpringBootTest(RANDOM_PORT)` +
 `RestTestClient`) with:
 
-- **Postgres real**, via Testcontainers `@ServiceConnection`
-  (`TestcontainersConfiguration` is `@Import`ed per test class);
+- **Postgres real** — the `timescale/timescaledb` image, via Testcontainers
+  `@ServiceConnection` (`TestcontainersConfiguration` is `@Import`ed per test class;
+  the image is declared `asCompatibleSubstituteFor("postgres")`);
 - **Kafka absent** — `@MockitoBean OrderCommandPublisher` replaces the producer, and
   tests `verify(...)` the exact command published. Mockito appears *only* at this Spring
   boundary, nowhere else in the repo;
 - profile `test` (`application-test.yml`);
 - `@BeforeEach` cleanup by deleting repositories (sessions → credentials → users, FK
-  order).
+  order); `CandleHistoryTest` clears the `trades` hypertable with `JdbcTemplate` instead,
+  there being no JPA entity for it.
+
+`CandleHistoryTest` is the slice for the trades tape: it calls the `RecordTrades` port
+directly with hand-built `TradeEvent`s at chosen timestamps (no Kafka), forces
+`refresh_continuous_aggregate` so the assertion does not depend on the refresh policy's
+timing, and reads `GET /marketdata/candles` back — pinning the aggregate's OHLCV
+arithmetic, epoch-aligned bucket starts, the range filter, idempotence under redelivery
+and the 400 `ProblemDetail` for an inverted range.
 
 Auth tests drive the real filter chain: `ProbeController` (test-source-only
 `/test/protected` endpoint) exists to assert the JWT filter end-to-end. Tokens for
@@ -134,7 +143,8 @@ endpoint yet, `seedFunds(userId)` produces `DepositCommand`s straight to
 `orders.commands` with a raw producer — single-partition ordering guarantees they apply
 before the orders. Flow: register over HTTP → JWT → seed → open
 the `/marketdata` WebSocket → post crossing orders → assert the decoded event arrives on
-the socket. `ContainerTestUtils.waitForAssignment` gates the race between listener
+the socket → poll `GET /marketdata/candles` until the trade's bucket appears (the one
+place the real-time aggregation path is exercised end to end). `ContainerTestUtils.waitForAssignment` gates the race between listener
 startup and the first order; a bounded `messages.poll(30s)` replaces sleeps. Negative
 path ("cancelled order must not trade") uses a short bounded poll asserting *nothing*
 arrives.
@@ -202,12 +212,11 @@ server field errors render under their inputs with no form-level message.
 - The WebSocket JSON shape (Jackson serialization of `TradeEvent`/`CancelEvent`) is
   asserted only by decoding it back in `:e2e`. The frontend now consumes it, so the field
   names *are* a contract and deserve a pinning test — the same goes for the `Candle`
-  payload on `/marketdata/candles`, which the chart maps field-by-field with nothing
-  guarding a rename on either side.
-- **The candle projection is untested.** Bucket boundaries, roll-over, replay determinism
-  and the (still absent) upsert are exactly the logic that property/unit tests are cheap
-  for: feed a fixed list of `TradeEvent`s at chosen timestamps and assert the emitted
-  candles. Doing this would have caught the wall-clock `bucketStart` immediately.
+  rows from `GET /marketdata/candles`, which `CandleHistoryTest` deserializes back into
+  the same Kotlin class, so a rename on the gateway side passes while the chart breaks.
+- The client-side bar rule (`applyTrade`) and the SQL bucket rule are tested separately;
+  nothing asserts they agree. A cross-check would replay one trade list through both and
+  compare.
 - Frontend coverage stops at the pure mapping layer. Nothing exercises the WebSocket
   lifecycle (reconnect, `disposed` guard) or the chart wiring — that needs either a fake
   `WebSocket` or a browser-mode runner, since `lightweight-charts` needs a real canvas and

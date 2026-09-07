@@ -12,13 +12,9 @@ class WebSocketConfig : WebSocketConfigurer {
     @Bean
     fun marketDataBroadcaster() = WebSocketBroadcaster()
 
-    @Bean
-    fun candleBroadcaster() = WebSocketBroadcaster()
-
     override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
         registry
             .addHandler(marketDataBroadcaster(), "/marketdata")
-            .addHandler(candleBroadcaster(), "/marketdata/candles")
             .setAllowedOrigins("*")
     }
 }

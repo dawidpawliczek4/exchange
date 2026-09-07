@@ -106,7 +106,7 @@ services:
       - prometheus
 
   postgres:
-    image: postgres:17
+    image: timescale/timescaledb:2.29.1-pg17
     container_name: postgres
     environment:
       POSTGRES_DB: exchange

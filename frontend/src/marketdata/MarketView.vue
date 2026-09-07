@@ -12,7 +12,7 @@
       >
         {{ status }}
       </span>
-      <span class="text-xs text-neutral-500">{{ received }} candles</span>
+      <span class="text-xs text-neutral-500">{{ received }} trades</span>
     </header>
     <section class="mt-6 ml-4 min-h-0 flex-1">
       <div ref="containerEl" class="h-1/2"></div>
@@ -23,9 +23,18 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
 import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
-import { createBarStream, type CandleMessage } from './candles'
+import { http } from '@/shared/http'
+import { safeRequest } from '@/shared/apiError'
+import {
+  applyTrade,
+  isTrade,
+  toBar,
+  type Bar,
+  type CandleHistoryItem,
+  type MarketFrame,
+} from './candles'
 
-const WS_URL = `${import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'}/marketdata/candles`
+const WS_URL = `${import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'}/marketdata`
 
 const containerEl = useTemplateRef<HTMLDivElement>('containerEl')
 const chart = shallowRef<IChartApi>()
@@ -33,26 +42,36 @@ const series = shallowRef<ISeriesApi<'Candlestick'>>()
 const status = shallowRef<'connecting' | 'open' | 'closed'>('connecting')
 const received = shallowRef(0)
 
-const nextBar = createBarStream()
-
+let lastBar: Bar | undefined
 let socket: WebSocket | undefined
 let reconnectTimer: number | undefined
 let disposed = false
 
-function onCandle(message: CandleMessage) {
-  const bar = nextBar(message)
-  if (bar === null) return
+async function loadHistory() {
+  const result = await safeRequest(http.get<CandleHistoryItem[]>('/marketdata/candles'))
+  if (!result.ok || disposed) return
 
-  series.value?.update(bar)
+  const bars = result.data.map(toBar)
+  series.value?.setData(bars)
+  lastBar = bars.at(-1)
+}
+
+function onFrame(frame: MarketFrame) {
+  if (!isTrade(frame)) return
+
+  lastBar = applyTrade(lastBar, frame)
+  series.value?.update(lastBar)
   received.value += 1
 }
 
-function connect() {
+async function connect() {
   status.value = 'connecting'
-  socket = new WebSocket(WS_URL)
+  await loadHistory()
+  if (disposed) return
 
+  socket = new WebSocket(WS_URL)
   socket.onopen = () => (status.value = 'open')
-  socket.onmessage = (event) => onCandle(JSON.parse(event.data as string) as CandleMessage)
+  socket.onmessage = (event) => onFrame(JSON.parse(event.data as string) as MarketFrame)
   socket.onclose = () => {
     status.value = 'closed'
     if (!disposed) reconnectTimer = window.setTimeout(connect, 2000)

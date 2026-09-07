@@ -3,6 +3,7 @@ package com.dawidpawliczek.e2e
 import com.dawidpawliczek.app.ExchangeApplication
 import com.dawidpawliczek.app.auth.AuthTokens
 import com.dawidpawliczek.app.auth.user.UserRepository
+import com.dawidpawliczek.app.marketData.application.model.Candle
 import com.dawidpawliczek.contracts.Asset
 import com.dawidpawliczek.contracts.CancelStatus
 import com.dawidpawliczek.contracts.Topics
@@ -28,6 +29,7 @@ import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTe
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
+import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.MediaType
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry
 import org.springframework.kafka.test.utils.ContainerTestUtils
@@ -61,7 +63,7 @@ class TradeFlowE2eTest {
         @Container
         @ServiceConnection
         @JvmStatic
-        val postgres = PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"))
+        val postgres = PostgreSQLContainer(DockerImageName.parse("timescale/timescaledb:2.29.1-pg17").asCompatibleSubstituteFor("postgres"))
 
         @Container
         @JvmStatic
@@ -129,6 +131,14 @@ class TradeFlowE2eTest {
             assertTrue(event.seq() > 0)
             assertTrue(event.timestamp() > 0)
 
+            val candle = awaitCandle(event.timestamp())
+            assertEquals(event.timestamp() / 5_000 * 5_000, candle.bucketStart)
+            assertEquals(100L, candle.open)
+            assertEquals(100L, candle.close)
+            assertEquals(5L, candle.volume)
+            assertEquals(500L, candle.quoteVolume)
+            assertEquals(1L, candle.tradeCount)
+
             session.close()
         }
     }
@@ -186,6 +196,26 @@ class TradeFlowE2eTest {
             .responseBody!!
 
     private fun registeredUserId(): Long = userRepository.findAll().single().id
+
+    private fun awaitCandle(tradeTimestamp: Long): Candle {
+        val bucketStart = tradeTimestamp / 5_000 * 5_000
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (true) {
+            val candles =
+                client
+                    .get()
+                    .uri("/marketdata/candles?from=$bucketStart&to=${bucketStart + 5_000}")
+                    .exchange()
+                    .expectStatus()
+                    .isOk()
+                    .expectBody(object : ParameterizedTypeReference<List<Candle>>() {})
+                    .returnResult()
+                    .responseBody!!
+            if (candles.isNotEmpty()) return candles.single()
+            assertTrue(System.nanoTime() < deadline, "no candle on /marketdata/candles within 30s")
+            Thread.sleep(200)
+        }
+    }
 
     private fun seedFunds(userId: Long) {
         KafkaProducer<String, ByteArray>(
