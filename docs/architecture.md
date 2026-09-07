@@ -327,6 +327,14 @@ Gradle's `node-gradle` plugin downloads Node/pnpm and runs `vue-tsc` + `vite bui
 work is `cd frontend && pnpm dev`, or `./gradlew :frontend:pnpmDev` to run the same Vite
 server through Gradle's downloaded Node.
 
+The UI kit is shadcn-vue on reka-ui, vendored under `src/shared/ui/` (button, card, input,
+label, dropdown-menu). `layout/AppLayout.vue` wraps routed views with `AppNavbar.vue`;
+when signed in, the navbar's profile icon opens `layout/UserMenu.vue`, a reka-ui
+`DropdownMenu` (click-outside, Escape and keyboard navigation come from the library) with a
+`User` placeholder label and Sign out. The label stays a placeholder because the store holds
+only tokens and the gateway has no `/me`; it fills in once a profile endpoint or the balance
+projection lands.
+
 Tailwind 4 is wired through the `@tailwindcss/vite` plugin, whose entry point is a CSS
 file, not a config file — `src/assets/main.css` holds `@import "tailwindcss";` and
 `main.ts` imports it. There is no `tailwind.config.js` (v4 configures the theme in CSS).
