@@ -324,7 +324,8 @@ pins the aggregate's arithmetic and the idempotent insert against the real conta
 Vue 3 + TypeScript on Vite 8, pnpm, Tailwind 4, `lightweight-charts` 5 for the chart.
 Gradle's `node-gradle` plugin downloads Node/pnpm and runs `vue-tsc` + `vite build` into
 `frontend/build/dist`, so `./gradlew build` type-checks and builds the UI in CI; day-to-day
-work is `cd frontend && pnpm dev`.
+work is `cd frontend && pnpm dev`, or `./gradlew :frontend:pnpmDev` to run the same Vite
+server through Gradle's downloaded Node.
 
 Tailwind 4 is wired through the `@tailwindcss/vite` plugin, whose entry point is a CSS
 file, not a config file — `src/assets/main.css` holds `@import "tailwindcss";` and
