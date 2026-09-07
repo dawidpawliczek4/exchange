@@ -179,6 +179,24 @@ component with the store and router mocked (`vi.mock('@/auth/store')`,
 `vi.mock('@/router')`) and asserts the four outcomes of a submit: local validation blocks
 the call, success navigates to `/`, a `message`-only error renders as the form error, and
 server field errors render under their inputs with no form-level message.
+`src/auth/AuthRegister.test.ts` only pins what differs on the register page: `RegisterSchema`
+is wired (a short password is rejected locally, `LoginSchema` would let it through) and the
+submit reaches `register`, not `login`.
+
+Token persistence has its own two files. `src/auth/store.test.ts` runs the real Pinia store
+(`setActivePinia(createPinia())` per test, `localStorage.clear()` in `beforeEach`) with
+`http.post` and `axios.post` spied, and asserts against `localStorage` directly: both keys
+hold the **raw** token string, a fresh store on the same storage is authenticated (the
+page-reload guarantee), `logout` and `clearTokens` empty both keys, and concurrent refreshes
+share one request. Raw strings matter because the request interceptor in `src/shared/http.ts`
+reads the key without the store; vueuse's `useLocalStorage` writes them raw only because the
+default is `null`, so a serializer change would break the bearer header silently.
+`src/shared/http.test.ts` drives the real `http` instance through a fake axios adapter
+(`http.defaults.adapter`) with the store and router mocked, and pins the 401 path: one refresh,
+one retry carrying the new bearer, no refresh for `/auth/*`, and on a failed refresh the tokens
+are cleared **through the store** before routing to `/login` — a raw `localStorage.removeItem`
+would leave the store's refs (and `isAuthenticated`) stale, because vueuse only re-reads on the
+`storage` events it dispatches for its own writes.
 
 ## Where does a new test go?
 

@@ -46,10 +46,14 @@ export const useAuthStore = defineStore('auth', () => {
     return refreshPromise
   }
 
-  async function logout() {
-    const refresh = refreshToken.value
+  function clearTokens() {
     accessToken.value = null
     refreshToken.value = null
+  }
+
+  async function logout() {
+    const refresh = refreshToken.value
+    clearTokens()
     if (refresh)
       await http.post('/auth/session/logout', { refreshToken: refresh }).catch(() => undefined)
   }
@@ -70,5 +74,5 @@ export const useAuthStore = defineStore('auth', () => {
     return res
   }
 
-  return { isAuthenticated, login, register, logout, refreshAccessToken }
+  return { isAuthenticated, login, register, logout, clearTokens, refreshAccessToken }
 })

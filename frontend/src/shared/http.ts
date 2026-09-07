@@ -1,6 +1,6 @@
 import axios from 'axios'
 import router from '@/router'
-import { ACCESS_KEY, REFRESH_KEY } from '@/shared/localStorage'
+import { ACCESS_KEY } from '@/shared/localStorage'
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -11,7 +11,7 @@ export const http = axios.create({
 
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem(ACCESS_KEY)
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
@@ -25,15 +25,14 @@ http.interceptors.response.use(
     original._retry = true
 
     const { useAuthStore } = await import('@/auth/store')
-    const { refreshAccessToken } = useAuthStore()
+    const auth = useAuthStore()
 
     try {
-      const newToken = await refreshAccessToken()
+      const newToken = await auth.refreshAccessToken()
       original.headers.Authorization = `Bearer ${newToken}`
       return http(original)
     } catch (e) {
-      localStorage.removeItem(ACCESS_KEY)
-      localStorage.removeItem(REFRESH_KEY)
+      auth.clearTokens()
       await router.push('/login')
       return Promise.reject(e)
     }
